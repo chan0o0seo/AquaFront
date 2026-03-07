@@ -1,0 +1,102 @@
+import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import HomePage from '../pages/HomePage.vue'
+import LoginPage from '../pages/LoginPage.vue'
+import RegisterPage from '../pages/RegisterPage.vue'
+import RegisterCompletePage from '../pages/RegisterCompletePage.vue'
+import MyPage from '../pages/MyPage.vue'
+import SearchPage from '../pages/SearchPage.vue'
+import ProductDetailPage from '../pages/ProductDetailPage.vue'
+import CartPage from '../pages/CartPage.vue'
+import SellerApplyPage from '../pages/SellerApplyPage.vue'
+import SellerApplyCompletePage from '../pages/SellerApplyCompletePage.vue'
+import SellerProfileSetupPage from '../pages/SellerProfileSetupPage.vue'
+import SellerProductForm from '../pages/SellerProductForm.vue'
+import SellerDashboardPage from '../pages/SellerDashboardPage.vue'
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    name: 'Home',
+    component: HomePage
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: LoginPage
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: RegisterPage
+  },
+  {
+    path: '/register/complete',
+    name: 'RegisterComplete',
+    component: RegisterCompletePage
+  },
+  {
+    path: '/mypage',
+    name: 'MyPage',
+    component: MyPage
+  },
+  {
+    path: '/search',
+    name: 'Search',
+    component: SearchPage
+  },
+  {
+    path: '/products/:productId',
+    name: 'ProductDetail',
+    component: ProductDetailPage
+  },
+  {
+    path: '/cart',
+    name: 'Cart',
+    component: CartPage
+  },
+  {
+    path: '/mypage/seller',
+    name: 'SellerDashboard',
+    component: SellerDashboardPage
+  },
+  {
+    path: '/seller/apply',
+    name: 'SellerApply',
+    component: SellerApplyPage
+  },
+  {
+    path: '/seller/apply/complete',
+    name: 'SellerApplyComplete',
+    component: SellerApplyCompletePage
+  },
+  {
+    path: '/seller/profile/setup',
+    name: 'SellerProfileSetup',
+    component: SellerProfileSetupPage
+  },
+  {
+    path: '/seller/profile/edit',
+    name: 'SellerProfileEdit',
+    component: SellerProfileSetupPage
+  },
+  {
+    path: '/seller/products/new',
+    name: 'SellerProductNew',
+    component: SellerProductForm
+  },
+  {
+    path: '/seller/products/:id/edit',
+    name: 'SellerProductEdit',
+    component: SellerProductForm
+  }
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior() {
+    return { top: 0 }
+  }
+})
+
+export default router
