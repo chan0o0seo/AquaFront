@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ArrowRight } from 'lucide-vue-next'
+
+const router = useRouter()
 
 interface Auction {
   id: number
@@ -49,9 +52,12 @@ onUnmounted(() => {
           <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse-red"></span>
           실시간 경매
         </h2>
-        <a href="#" class="text-sky-600 font-semibold text-sm flex items-center gap-1 hover:gap-2 transition-all">
+        <button
+          @click="router.push('/auction')"
+          class="text-sky-600 font-semibold text-sm flex items-center gap-1 hover:gap-2 transition-all"
+        >
           전체보기 <ArrowRight class="w-4 h-4" />
-        </a>
+        </button>
       </div>
 
       <!-- Auction Cards -->
@@ -92,7 +98,10 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <button class="w-full py-3 bg-sky-500 text-white font-semibold rounded-xl hover:bg-sky-600 transition-colors">
+            <button
+              @click="router.push(`/auction/${auction.id}`)"
+              class="w-full py-3 bg-sky-500 text-white font-semibold rounded-xl hover:bg-sky-600 transition-colors"
+            >
               입찰하기
             </button>
           </div>

@@ -255,11 +255,9 @@ const liveCount = computed(() => auctions.value.filter(a => a.status === 'LIVE')
         <div
           v-for="auction in filteredAuctions"
           :key="auction.id"
-          @click="auction.status !== 'ENDED' && router.push(`/auction/${auction.id}`)"
-          class="bg-white rounded-2xl border border-sky-100 overflow-hidden transition-all duration-200 group"
-          :class="auction.status !== 'ENDED'
-            ? 'cursor-pointer hover:shadow-lg hover:scale-[1.02] hover:border-sky-200'
-            : 'opacity-60'"
+          @click="router.push(`/auction/${auction.id}`)"
+          class="bg-white rounded-2xl border border-sky-100 overflow-hidden transition-all duration-200 group cursor-pointer hover:shadow-lg hover:scale-[1.02] hover:border-sky-200"
+          :class="auction.status === 'ENDED' ? 'opacity-70' : ''"
         >
           <!-- Image Area -->
           <div class="relative aspect-square bg-gradient-to-br from-sky-100 to-teal-200 flex items-center justify-center">

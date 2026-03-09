@@ -6,6 +6,8 @@ import WishlistTab from '../components/mypage/WishlistTab.vue'
 import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
 import ProfileEditModal from '../components/mypage/ProfileEditModal.vue'
 import TankProfileTab from '../components/mypage/TankProfileTab.vue'
+import OrdersTab from '../components/mypage/OrdersTab.vue'
+import AuctionsTab from '../components/mypage/AuctionsTab.vue'
 
 const router = useRouter()
 
@@ -291,63 +293,12 @@ function goToOrderDetail(orderId: number) {
 
           <!-- Orders Tab -->
           <div v-show="activeTab === 'orders'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">주문 내역</h1>
-            <div class="space-y-0">
-              <div
-                  v-for="order in recentOrders"
-                  :key="order.id"
-                  @click="goToOrderDetail(order.id)"
-                  class="flex items-center justify-between border-b border-sky-50 py-4 cursor-pointer hover:bg-sky-50 rounded-xl px-2 -mx-2 transition-colors"
-              >
-                <div class="flex items-center gap-4">
-                  <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200"></div>
-                  <div>
-                    <div class="font-medium text-slate-900">{{ order.name }}</div>
-                    <div class="text-sm text-slate-400">{{ order.date }}</div>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <span
-                      class="text-xs px-2 py-1 rounded-full"
-                      :class="order.status === '배송중' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'"
-                  >
-                    {{ order.status }}
-                  </span>
-                  <div class="text-sm font-semibold text-slate-900 mt-1">{{ order.price }}</div>
-                </div>
-              </div>
-            </div>
+            <OrdersTab />
           </div>
 
           <!-- Auctions Tab -->
           <div v-show="activeTab === 'auctions'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">참여 경매</h1>
-            <div class="space-y-4">
-              <div
-                  v-for="auction in activeAuctions"
-                  :key="auction.id"
-                  class="flex gap-4 bg-sky-50 rounded-2xl p-4"
-              >
-                <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200 flex-shrink-0"></div>
-                <div class="flex-1">
-                  <div class="font-medium text-slate-900">{{ auction.name }}</div>
-                  <div class="flex items-center gap-4 mt-2 text-sm">
-                    <div>
-                      <span class="text-slate-500">현재가</span>
-                      <span class="font-bold text-sky-600 ml-1">{{ auction.currentBid }}</span>
-                    </div>
-                    <div>
-                      <span class="text-slate-500">내 입찰가</span>
-                      <span class="font-semibold text-slate-700 ml-1">{{ auction.myBid }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-amber-500 font-mono text-lg font-bold">{{ auction.timeLeft }}</div>
-                  <div class="text-xs text-slate-400">남은 시간</div>
-                </div>
-              </div>
-            </div>
+            <AuctionsTab />
           </div>
 
           <!-- Wishlist Tab -->

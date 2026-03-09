@@ -1,5 +1,8 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import HomePage from '../pages/HomePage.vue'
+import AuctionListPage from '../pages/AuctionListPage.vue'
+import AuctionDetailPage from '../pages/AuctionDetailPage.vue'
+import SellerStorePage from '../pages/SellerStorePage.vue'
 import LoginPage from '../pages/LoginPage.vue'
 import RegisterPage from '../pages/RegisterPage.vue'
 import RegisterCompletePage from '../pages/RegisterCompletePage.vue'
@@ -15,6 +18,12 @@ import SellerProfileSetupPage from '../pages/SellerProfileSetupPage.vue'
 import SellerProductForm from '../pages/SellerProductForm.vue'
 import SellerDashboardPage from '../pages/SellerDashboardPage.vue'
 import OrderDetailPage from "../pages/OrderDetailPage.vue"
+import CommunityListPage from '../pages/CommunityListPage.vue'
+import CommunityDetailPage from '../pages/CommunityDetailPage.vue'
+import ShopPage from '../pages/ShopPage.vue'
+import SellerAuctionForm from '../pages/SellerAuctionForm.vue'
+import CommunityWritePage from '../pages/CommunityWritePage.vue'
+import AdminPage from '../pages/AdminPage.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -106,6 +115,56 @@ const routes: RouteRecordRaw[] = [
     path: '/orders/:orderId',
     name: 'OrderDetail',
     component: OrderDetailPage
+  },
+  {
+    path: '/auction',
+    name: 'AuctionList',
+    component: AuctionListPage
+  },
+  {
+    path: '/auction/:auctionId',
+    name: 'AuctionDetail',
+    component: AuctionDetailPage
+  },
+  {
+    path: '/store/:sellerId',
+    name: 'SellerStore',
+    component: SellerStorePage
+  },
+  {
+    path: '/community',
+    name: 'CommunityList',
+    component: CommunityListPage
+  },
+  {
+    path: '/community/:postId',
+    name: 'CommunityDetail',
+    component: CommunityDetailPage
+  },
+  {
+    path: '/shop',
+    name: 'Shop',
+    component: ShopPage
+  },
+  {
+    path: '/seller/auctions/new',
+    name: 'SellerAuctionNew',
+    component: SellerAuctionForm
+  },
+  {
+    path: '/community/write',
+    name: 'CommunityWrite',
+    component: CommunityWritePage
+  },
+  {
+    path: '/community/:postId/edit',
+    name: 'CommunityEdit',
+    component: CommunityWritePage
+  },
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: AdminPage
   }
 ]
 
