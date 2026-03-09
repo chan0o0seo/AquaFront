@@ -7,11 +7,14 @@ import MyPage from '../pages/MyPage.vue'
 import SearchPage from '../pages/SearchPage.vue'
 import ProductDetailPage from '../pages/ProductDetailPage.vue'
 import CartPage from '../pages/CartPage.vue'
+import CheckoutPage from '../pages/CheckoutPage.vue'
+import OrderCompletePage from '../pages/OrderCompletePage.vue'
 import SellerApplyPage from '../pages/SellerApplyPage.vue'
 import SellerApplyCompletePage from '../pages/SellerApplyCompletePage.vue'
 import SellerProfileSetupPage from '../pages/SellerProfileSetupPage.vue'
 import SellerProductForm from '../pages/SellerProductForm.vue'
 import SellerDashboardPage from '../pages/SellerDashboardPage.vue'
+import OrderDetailPage from "../pages/OrderDetailPage.vue"
 
 const routes: RouteRecordRaw[] = [
   {
@@ -55,6 +58,16 @@ const routes: RouteRecordRaw[] = [
     component: CartPage
   },
   {
+    path: '/checkout',
+    name: 'Checkout',
+    component: CheckoutPage
+  },
+  {
+    path: '/orders/complete',
+    name: 'OrderComplete',
+    component: OrderCompletePage
+  },
+  {
     path: '/mypage/seller',
     name: 'SellerDashboard',
     component: SellerDashboardPage
@@ -88,6 +101,11 @@ const routes: RouteRecordRaw[] = [
     path: '/seller/products/:id/edit',
     name: 'SellerProductEdit',
     component: SellerProductForm
+  },
+  {
+    path: '/orders/:orderId',
+    name: 'OrderDetail',
+    component: OrderDetailPage
   }
 ]
 

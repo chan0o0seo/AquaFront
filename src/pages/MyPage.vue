@@ -2,6 +2,10 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings } from 'lucide-vue-next'
+import WishlistTab from '../components/mypage/WishlistTab.vue'
+import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
+import ProfileEditModal from '../components/mypage/ProfileEditModal.vue'
+import TankProfileTab from '../components/mypage/TankProfileTab.vue'
 
 const router = useRouter()
 
@@ -45,13 +49,13 @@ const menuItems = computed(() => {
     { key: 'tank', icon: Fish, label: '내 수조 프로필' },
     { key: 'notifications', icon: Bell, label: '알림 설정' },
   ]
-  
+
   if (user.value.memberType === 'seller' || user.value.memberType === 'breeder') {
     items.push({ key: 'seller', icon: Store, label: '판매자 센터' })
   }
-  
+
   items.push({ key: 'settings', icon: Settings, label: '계정 설정' })
-  
+
   return items
 })
 
@@ -73,8 +77,17 @@ const notifications = ref({
   marketing: false
 })
 
-// Tank profile
-const hasTank = ref(false)
+// Profile edit modal
+const showProfileEditModal = ref(false)
+
+function onProfileSaved(updated: { nickname: string }) {
+  user.value.nickname = updated.nickname
+  user.value.initial = updated.nickname.charAt(0)
+}
+
+function goToOrderDetail(orderId: number) {
+  router.push(`/orders/${orderId}`)
+}
 </script>
 
 <template>
@@ -98,7 +111,10 @@ const hasTank = ref(false)
                 </span>
               </div>
               <!-- Edit Profile -->
-              <button class="text-sm text-sky-500 hover:underline cursor-pointer mt-3 block mx-auto">
+              <button
+                  @click="showProfileEditModal = true"
+                  class="text-sm text-sky-500 hover:underline cursor-pointer mt-3 block mx-auto"
+              >
                 프로필 편집
               </button>
             </div>
@@ -106,12 +122,12 @@ const hasTank = ref(false)
             <!-- Navigation Menu -->
             <nav class="space-y-1">
               <button
-                v-for="item in menuItems"
-                :key="item.key"
-                @click="activeTab = item.key"
-                class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors duration-150 text-left"
-                :class="activeTab === item.key 
-                  ? 'bg-sky-50 text-sky-600 font-semibold' 
+                  v-for="item in menuItems"
+                  :key="item.key"
+                  @click="activeTab = item.key"
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors duration-150 text-left"
+                  :class="activeTab === item.key
+                  ? 'bg-sky-50 text-sky-600 font-semibold'
                   : 'text-slate-600 hover:bg-sky-50 hover:text-sky-600'"
               >
                 <component :is="item.icon" class="w-5 h-5" />
@@ -126,7 +142,7 @@ const hasTank = ref(false)
           <!-- Summary Tab -->
           <div v-show="activeTab === 'summary'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">홈 요약</h1>
-            
+
             <!-- Stat Cards -->
             <div class="grid grid-cols-3 gap-4 mb-8">
               <div class="bg-sky-50 rounded-2xl p-5 border border-sky-100">
@@ -150,10 +166,11 @@ const hasTank = ref(false)
             <section class="mb-8">
               <h2 class="text-xl font-bold text-slate-900 mb-4">최근 주문</h2>
               <div class="space-y-0">
-                <div 
-                  v-for="order in recentOrders" 
-                  :key="order.id"
-                  class="flex items-center justify-between border-b border-sky-50 py-4"
+                <div
+                    v-for="order in recentOrders"
+                    :key="order.id"
+                    @click="goToOrderDetail(order.id)"
+                    class="flex items-center justify-between border-b border-sky-50 py-4 cursor-pointer hover:bg-sky-50 rounded-xl px-2 -mx-2 transition-colors"
                 >
                   <div class="flex items-center gap-4">
                     <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200"></div>
@@ -163,9 +180,9 @@ const hasTank = ref(false)
                     </div>
                   </div>
                   <div class="text-right">
-                    <span 
-                      class="text-xs px-2 py-1 rounded-full"
-                      :class="order.status === '배송중' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'"
+                    <span
+                        class="text-xs px-2 py-1 rounded-full"
+                        :class="order.status === '배송중' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'"
                     >
                       {{ order.status }}
                     </span>
@@ -179,10 +196,10 @@ const hasTank = ref(false)
             <section>
               <h2 class="text-xl font-bold text-slate-900 mb-4">참여 중인 경매</h2>
               <div class="space-y-4">
-                <div 
-                  v-for="auction in activeAuctions" 
-                  :key="auction.id"
-                  class="flex gap-4 bg-sky-50 rounded-2xl p-4"
+                <div
+                    v-for="auction in activeAuctions"
+                    :key="auction.id"
+                    class="flex gap-4 bg-sky-50 rounded-2xl p-4"
                 >
                   <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200 flex-shrink-0"></div>
                   <div class="flex-1">
@@ -209,97 +226,63 @@ const hasTank = ref(false)
 
           <!-- Tank Profile Tab -->
           <div v-show="activeTab === 'tank'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">내 수조 프로필</h1>
-            
-            <div v-show="!hasTank" class="text-center py-16">
-              <div class="text-6xl mb-4">🐠</div>
-              <p class="text-slate-500 mb-6">아직 등록된 수조가 없어요</p>
-              <button 
-                @click="hasTank = true"
-                class="bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-full px-8 py-3 transition-all duration-200"
-              >
-                수조 프로필 만들기
-              </button>
-            </div>
-
-            <div v-show="hasTank" class="bg-sky-50 rounded-2xl p-6 border border-sky-100">
-              <div class="flex items-start justify-between mb-4">
-                <div>
-                  <h3 class="font-bold text-slate-900 text-lg">거실 수초 수조</h3>
-                  <p class="text-slate-500 text-sm">60cm 수초 수조</p>
-                </div>
-                <button class="text-sm text-sky-500 hover:underline">편집</button>
-              </div>
-              
-              <div class="mb-4">
-                <span class="text-sm text-slate-500 block mb-2">키우는 물고기</span>
-                <div class="flex flex-wrap gap-2">
-                  <span class="rounded-full bg-sky-50 border border-sky-100 text-slate-600 px-3 py-1 text-sm">네온테트라</span>
-                  <span class="rounded-full bg-sky-50 border border-sky-100 text-slate-600 px-3 py-1 text-sm">레드 체리 새우</span>
-                  <span class="rounded-full bg-sky-50 border border-sky-100 text-slate-600 px-3 py-1 text-sm">코리도라스</span>
-                </div>
-              </div>
-
-              <div class="border-2 border-dashed border-sky-200 rounded-xl p-8 text-center">
-                <p class="text-slate-400 text-sm">수조 레이아웃 사진 업로드</p>
-              </div>
-            </div>
+            <TankProfileTab />
           </div>
 
           <!-- Notifications Tab -->
           <div v-show="activeTab === 'notifications'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">알림 설정</h1>
-            
+
             <div class="space-y-0">
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">경매 종료 임박 알림</span>
-                <button 
-                  @click="notifications.auctionEnd = !notifications.auctionEnd"
-                  class="w-12 h-6 rounded-full transition-all duration-200 relative"
-                  :class="notifications.auctionEnd ? 'bg-sky-500' : 'bg-slate-200'"
+                <button
+                    @click="notifications.auctionEnd = !notifications.auctionEnd"
+                    class="w-12 h-6 rounded-full transition-all duration-200 relative"
+                    :class="notifications.auctionEnd ? 'bg-sky-500' : 'bg-slate-200'"
                 >
-                  <span 
-                    class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
-                    :class="notifications.auctionEnd ? 'left-7' : 'left-1'"
+                  <span
+                      class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
+                      :class="notifications.auctionEnd ? 'left-7' : 'left-1'"
                   ></span>
                 </button>
               </div>
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">팔로우한 브리더 신규 개체 등록</span>
-                <button 
-                  @click="notifications.newBreeder = !notifications.newBreeder"
-                  class="w-12 h-6 rounded-full transition-all duration-200 relative"
-                  :class="notifications.newBreeder ? 'bg-sky-500' : 'bg-slate-200'"
+                <button
+                    @click="notifications.newBreeder = !notifications.newBreeder"
+                    class="w-12 h-6 rounded-full transition-all duration-200 relative"
+                    :class="notifications.newBreeder ? 'bg-sky-500' : 'bg-slate-200'"
                 >
-                  <span 
-                    class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
-                    :class="notifications.newBreeder ? 'left-7' : 'left-1'"
+                  <span
+                      class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
+                      :class="notifications.newBreeder ? 'left-7' : 'left-1'"
                   ></span>
                 </button>
               </div>
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">주문 배송 상태 변경</span>
-                <button 
-                  @click="notifications.orderStatus = !notifications.orderStatus"
-                  class="w-12 h-6 rounded-full transition-all duration-200 relative"
-                  :class="notifications.orderStatus ? 'bg-sky-500' : 'bg-slate-200'"
+                <button
+                    @click="notifications.orderStatus = !notifications.orderStatus"
+                    class="w-12 h-6 rounded-full transition-all duration-200 relative"
+                    :class="notifications.orderStatus ? 'bg-sky-500' : 'bg-slate-200'"
                 >
-                  <span 
-                    class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
-                    :class="notifications.orderStatus ? 'left-7' : 'left-1'"
+                  <span
+                      class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
+                      :class="notifications.orderStatus ? 'left-7' : 'left-1'"
                   ></span>
                 </button>
               </div>
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">마케팅 및 이벤트 알림</span>
-                <button 
-                  @click="notifications.marketing = !notifications.marketing"
-                  class="w-12 h-6 rounded-full transition-all duration-200 relative"
-                  :class="notifications.marketing ? 'bg-sky-500' : 'bg-slate-200'"
+                <button
+                    @click="notifications.marketing = !notifications.marketing"
+                    class="w-12 h-6 rounded-full transition-all duration-200 relative"
+                    :class="notifications.marketing ? 'bg-sky-500' : 'bg-slate-200'"
                 >
-                  <span 
-                    class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
-                    :class="notifications.marketing ? 'left-7' : 'left-1'"
+                  <span
+                      class="absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200"
+                      :class="notifications.marketing ? 'left-7' : 'left-1'"
                   ></span>
                 </button>
               </div>
@@ -310,10 +293,11 @@ const hasTank = ref(false)
           <div v-show="activeTab === 'orders'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">주문 내역</h1>
             <div class="space-y-0">
-              <div 
-                v-for="order in recentOrders" 
-                :key="order.id"
-                class="flex items-center justify-between border-b border-sky-50 py-4"
+              <div
+                  v-for="order in recentOrders"
+                  :key="order.id"
+                  @click="goToOrderDetail(order.id)"
+                  class="flex items-center justify-between border-b border-sky-50 py-4 cursor-pointer hover:bg-sky-50 rounded-xl px-2 -mx-2 transition-colors"
               >
                 <div class="flex items-center gap-4">
                   <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200"></div>
@@ -323,9 +307,9 @@ const hasTank = ref(false)
                   </div>
                 </div>
                 <div class="text-right">
-                  <span 
-                    class="text-xs px-2 py-1 rounded-full"
-                    :class="order.status === '배송중' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'"
+                  <span
+                      class="text-xs px-2 py-1 rounded-full"
+                      :class="order.status === '배송중' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'"
                   >
                     {{ order.status }}
                   </span>
@@ -339,10 +323,10 @@ const hasTank = ref(false)
           <div v-show="activeTab === 'auctions'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">참여 경매</h1>
             <div class="space-y-4">
-              <div 
-                v-for="auction in activeAuctions" 
-                :key="auction.id"
-                class="flex gap-4 bg-sky-50 rounded-2xl p-4"
+              <div
+                  v-for="auction in activeAuctions"
+                  :key="auction.id"
+                  class="flex gap-4 bg-sky-50 rounded-2xl p-4"
               >
                 <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200 flex-shrink-0"></div>
                 <div class="flex-1">
@@ -368,18 +352,17 @@ const hasTank = ref(false)
 
           <!-- Wishlist Tab -->
           <div v-show="activeTab === 'wishlist'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">찜 목록</h1>
-            <p class="text-slate-500">찜한 상품이 여기에 표시됩니다.</p>
+            <WishlistTab />
           </div>
 
           <!-- Seller Tab -->
           <div v-show="activeTab === 'seller'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">판매자 센터</h1>
             <div class="bg-sky-50 rounded-2xl p-8 border border-sky-100 text-center">
-              <p class="text-slate-600 mb-4">판매자 전용 대시보드에서 상품과 통계를 관리하세요.</p>
+              <p class="text-slate-600 mb-4">판매자 전환 신청 후 대시보드에서 상품과 통계를 관리하세요.</p>
               <button
-                @click="router.push('/mypage/seller')"
-                class="px-8 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full transition-colors"
+                  @click="router.push('/mypage/seller')"
+                  class="px-8 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full transition-colors"
               >
                 판매자 센터로 이동
               </button>
@@ -388,11 +371,17 @@ const hasTank = ref(false)
 
           <!-- Settings Tab -->
           <div v-show="activeTab === 'settings'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">계정 설정</h1>
-            <p class="text-slate-500">계정 관련 설정을 여기에서 변경하세요.</p>
+            <AccountSettingsTab />
           </div>
         </div>
       </div>
     </main>
+
+    <!-- Profile Edit Modal -->
+    <ProfileEditModal
+        v-model="showProfileEditModal"
+        :user="user"
+        @saved="onProfileSaved"
+    />
   </div>
 </template>

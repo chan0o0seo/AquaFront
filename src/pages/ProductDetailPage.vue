@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Star, ShoppingCart, Shield, Thermometer, Fish, Check } from 'lucide-vue-next'
+import { Star, ShoppingCart, Shield, Thermometer, Fish, Check, Heart } from 'lucide-vue-next'
 import { useCartStore } from '../stores/cart'
 import ProductImageGallery from '../components/product/ProductImageGallery.vue'
 import ProductBioSpecs from '../components/product/ProductBioSpecs.vue'
@@ -59,6 +59,24 @@ interface ReviewForm {
 const route = useRoute()
 const router = useRouter()
 const cartStore = useCartStore()
+
+// Wishlist state
+const isWishlisted = ref(false)
+const isTogglingWishlist = ref(false)
+const heartAnimating = ref(false)
+
+const toggleWishlist = async () => {
+  if (isTogglingWishlist.value) return
+  isTogglingWishlist.value = true
+  await new Promise(resolve => setTimeout(resolve, 400))
+  isWishlisted.value = !isWishlisted.value
+  isTogglingWishlist.value = false
+}
+
+watch(isWishlisted, () => {
+  heartAnimating.value = true
+  setTimeout(() => { heartAnimating.value = false }, 300)
+})
 
 // State
 const isAddingToCart = ref(false)
@@ -219,7 +237,7 @@ const fetchReviews = async (productId: string, reset = false) => {
         reviewerId: 3,
         reviewerNickName: '구피매니아',
         rating: 5,
-        content: '풀레드 색상이 정말 진해요. 다른 구피들이랑 같이 키우는데 합사도 잘 되네요.',
+        content: '풀레드 색상이 정말 진해요. 다른 구피들이랑 같이 키우���데 합사도 잘 되네요.',
         imageUrls: [
           'https://picsum.photos/seed/review3a/200/200',
           'https://picsum.photos/seed/review3b/200/200'
@@ -400,7 +418,7 @@ watch(
     </div>
 
     <!-- Product Detail -->
-    <div v-show="product && !isLoadingProduct" class="max-w-6xl mx-auto px-6 py-12">
+    <div v-show="product && !isLoadingProduct" class="max-w-6xl mx-auto px-6 py-24">
       <!-- Two Column Layout -->
       <div class="flex flex-col lg:flex-row gap-12">
         <!-- LEFT: Image Gallery -->
@@ -488,6 +506,12 @@ watch(
             >
               (리뷰 {{ product?.reviewCount }}개)
             </button>
+            <span class="flex items-center gap-1 text-slate-400 text-sm ml-2">
+              <Heart
+                  class="w-3.5 h-3.5 transition-colors duration-200"
+                  :class="isWishlisted ? 'fill-red-400 text-red-400' : ''"
+              />
+            </span>
           </div>
 
           <!-- Price Section -->
@@ -554,14 +578,33 @@ watch(
               />
             </div>
 
+            <!-- Wishlist Button -->
+            <button
+                @click="toggleWishlist"
+                :disabled="isTogglingWishlist"
+                class="w-full py-4 px-8 rounded-full font-bold transition-all duration-200 flex items-center justify-center gap-2 border-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                :class="[
+                  isWishlisted
+                    ? 'border-red-400 bg-red-50 text-red-500 hover:bg-red-100'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-red-300 hover:text-red-400'
+                ]"
+            >
+              <Heart
+                  class="w-5 h-5 transition-all duration-200"
+                  :class="[isWishlisted ? 'fill-current' : '', heartAnimating ? 'heart-pop' : '']"
+              />
+              <span>{{ isWishlisted ? '찜 완료' : '찜하기' }}</span>
+            </button>
+
+
             <!-- Add to Cart -->
             <button
                 @click="addToCart"
                 :disabled="product?.status === 'SOLD_OUT' || isAddingToCart"
-                class="w-full py-4 px-8 rounded-full font-bold transition-all duration-200
+                class="w-full py-4 px-8 rounded-full font-bold mt-2 transition-all duration-200
                      bg-white border-2 border-sky-400 text-sky-600
                      hover:bg-sky-50
-                     disabled:opacity-50 disabled:cursor-not-allowed"
+                 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <template v-if="isAddingToCart">
                 <span class="inline-block w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mr-2" />
@@ -789,3 +832,14 @@ watch(
     </Transition>
   </main>
 </template>
+
+<style scoped>
+.heart-pop {
+  animation: heartPop 0.3s ease;
+}
+@keyframes heartPop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+</style>
