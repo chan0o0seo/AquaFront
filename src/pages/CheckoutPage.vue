@@ -3,6 +3,7 @@ import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
+import { orderApi } from '@/api'
 import {
   ArrowLeft,
   MapPin,
@@ -21,6 +22,7 @@ const { checkedItems, subtotal, totalShippingFee, totalPrice } = storeToRefs(car
 const form = reactive({
   recipient: '',
   phone: '',
+  zipCode: '',
   address: '',
   addressDetail: '',
   memo: '',
@@ -105,6 +107,7 @@ const orderTotalPrice = computed(() => {
 const isFormValid = computed(() =>
     form.recipient.trim().length > 0 &&
     form.phone.trim().length > 0 &&
+    form.zipCode.trim().length > 0 &&
     form.address.trim().length > 0
 )
 
@@ -141,11 +144,22 @@ const handleExpiryInput = (event: Event) => {
 const handleOrder = async () => {
   if (!isFormValid.value || isSubmitting.value) return
   isSubmitting.value = true
-  await new Promise(resolve => setTimeout(resolve, 1500))
-  isSubmitting.value = false
-  // Clear cart after successful order
-  cartStore.clearChecked()
-  router.push('/orders/complete')
+  try {
+    await orderApi.createOrder({
+      items: orderItems.value.map(i => ({ productId: i.productId, quantity: i.quantity })),
+      recipientName: form.recipient,
+      phoneNumber: form.phone,
+      zipCode: form.zipCode,
+      address: form.address,
+      detailAddress: form.addressDetail || undefined,
+    })
+    cartStore.clearChecked()
+    router.push('/orders/complete')
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '주문에 실패했습니다. 다시 시도해주세요.')
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
 const goBack = () => {
@@ -195,6 +209,17 @@ const goBack = () => {
                     type="tel"
                     placeholder="010-1234-5678"
                     class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+                />
+              </div>
+
+              <!-- 우편번호 -->
+              <div>
+                <input
+                    v-model="form.zipCode"
+                    type="text"
+                    placeholder="우편번호"
+                    maxlength="6"
+                    class="w-36 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-300"
                 />
               </div>
 

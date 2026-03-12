@@ -28,7 +28,7 @@ const props = defineProps<{
     <!-- 판매 완료 -->
     <div class="bg-emerald-50 rounded-2xl p-5 border border-emerald-100">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">판매 완료</span>
+        <span class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">진행 경매</span>
         <TrendingUp class="w-4 h-4 text-emerald-400" />
       </div>
       <div class="text-3xl font-black text-slate-900">{{ stats.soldCount }}</div>
@@ -38,15 +38,11 @@ const props = defineProps<{
     <!-- 진행 중 경매 -->
     <div class="bg-amber-50 rounded-2xl p-5 border border-amber-100">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-amber-600 uppercase tracking-wide">진행 경매</span>
+        <span class="text-xs font-semibold text-amber-600 uppercase tracking-wide">이번달 판매건?</span>
         <Gavel class="w-4 h-4 text-amber-400" />
       </div>
       <div class="flex items-center gap-2">
         <span class="text-3xl font-black text-slate-900">{{ stats.activeAuctions }}</span>
-        <span
-          v-if="stats.activeAuctions > 0"
-          class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold"
-        >경매중</span>
       </div>
       <div class="text-sm text-slate-500 mt-1">건</div>
     </div>
@@ -54,11 +50,11 @@ const props = defineProps<{
     <!-- 팔로워 -->
     <div class="bg-purple-50 rounded-2xl p-5 border border-purple-100">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-semibold text-purple-600 uppercase tracking-wide">팔로워</span>
+        <span class="text-xs font-semibold text-purple-600 uppercase tracking-wide">이번달 매출</span>
         <Users class="w-4 h-4 text-purple-400" />
       </div>
       <div class="text-3xl font-black text-slate-900">{{ stats.followerCount }}</div>
-      <div class="text-sm text-slate-500 mt-1">명</div>
+      <div class="text-sm text-slate-500 mt-1">원</div>
     </div>
   </div>
 </template>

@@ -1,22 +1,38 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings } from 'lucide-vue-next'
+import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings, Loader2, CheckCircle, Clock, XCircle, MapPin } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
+import { useSellerApplication } from '@/composables/useSellerApplication'
 import WishlistTab from '../components/mypage/WishlistTab.vue'
 import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
 import ProfileEditModal from '../components/mypage/ProfileEditModal.vue'
 import TankProfileTab from '../components/mypage/TankProfileTab.vue'
 import OrdersTab from '../components/mypage/OrdersTab.vue'
 import AuctionsTab from '../components/mypage/AuctionsTab.vue'
+import DeliveryAddressTab from '../components/mypage/DeliveryAddressTab.vue'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const { user: authUser } = storeToRefs(authStore)
+const {
+  applicationStatus,
+  applicationData,
+  hasProfile,
+  isLoading: isLoadingApplication,
+  fetchApplicationStatus,
+  reapply,
+  formatDate,
+} = useSellerApplication()
 
-// User data (mock)
-const user = ref({
-  nickname: '아쿠아리스트',
-  initial: '아',
-  memberType: 'seller' as 'buyer' | 'seller' | 'breeder'
-})
+
+// Derived user display
+const user = computed(() => ({
+  nickname: authUser.value?.nickName,
+  initial: authUser.value?.nickName.charAt(0),
+  memberType: (authUser.value?.role?.toLowerCase() ?? 'buyer') as 'buyer' | 'seller' | 'breeder',
+}))
 
 // Active tab
 const activeTab = ref('summary')
@@ -48,17 +64,25 @@ const menuItems = computed(() => {
     { key: 'orders', icon: Package, label: '주문 내역' },
     { key: 'auctions', icon: Gavel, label: '참여 경매' },
     { key: 'wishlist', icon: Heart, label: '찜 목록' },
+    { key: 'addresses', icon: MapPin, label: '배송지 관리' },
     { key: 'tank', icon: Fish, label: '내 수조 프로필' },
     { key: 'notifications', icon: Bell, label: '알림 설정' },
   ]
 
-  if (user.value.memberType === 'seller' || user.value.memberType === 'breeder') {
-    items.push({ key: 'seller', icon: Store, label: '판매자 센터' })
+  if (user.value.memberType !== 'seller' && user.value.memberType !== 'breeder') {
+    items.push({ key: 'seller', icon: Store, label: '판매자 전환 신청' })
   }
 
   items.push({ key: 'settings', icon: Settings, label: '계정 설정' })
 
   return items
+})
+
+// 판매자 탭 진입 시 신청 상태 조회 (BUYER 전용)
+watch(activeTab, (tab) => {
+  if (tab === 'seller' && user.value.memberType === 'buyer') {
+    fetchApplicationStatus()
+  }
 })
 
 // Member type badge
@@ -79,12 +103,14 @@ const notifications = ref({
   marketing: false
 })
 
+console.log(user.value);
 // Profile edit modal
 const showProfileEditModal = ref(false)
 
 function onProfileSaved(updated: { nickname: string }) {
-  user.value.nickname = updated.nickname
-  user.value.initial = updated.nickname.charAt(0)
+  if (authUser.value) {
+    authUser.value.nickName = updated.nickname
+  }
 }
 
 function goToOrderDetail(orderId: number) {
@@ -226,6 +252,11 @@ function goToOrderDetail(orderId: number) {
             </section>
           </div>
 
+          <!-- Delivery Address Tab -->
+          <div v-show="activeTab === 'addresses'">
+            <DeliveryAddressTab />
+          </div>
+
           <!-- Tank Profile Tab -->
           <div v-show="activeTab === 'tank'">
             <TankProfileTab />
@@ -308,21 +339,116 @@ function goToOrderDetail(orderId: number) {
 
           <!-- Seller Tab -->
           <div v-show="activeTab === 'seller'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">판매자 센터</h1>
-            <div class="bg-sky-50 rounded-2xl p-8 border border-sky-100 text-center">
-              <p class="text-slate-600 mb-4">판매자 전환 신청 후 대시보드에서 상품과 통계를 관리하세요.</p>
-              <button
+            <!-- 판매자/브리더: 대시보드 이동 -->
+            <template v-if="user.memberType === 'seller' || user.memberType === 'breeder'">
+              <h1 class="text-3xl font-black text-slate-900 mb-6">판매자 센터</h1>
+              <div class="bg-sky-50 rounded-2xl p-8 border border-sky-100 text-center">
+                <p class="text-slate-600 mb-4">대시보드에서 상품과 통계를 관리하세요.</p>
+                <button
                   @click="router.push('/mypage/seller')"
                   class="px-8 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full transition-colors"
-              >
-                판매자 센터로 이동
-              </button>
-            </div>
+                >
+                  판매자 센터로 이동
+                </button>
+              </div>
+            </template>
+
+            <!-- 일반 구매자: 판매자 전환 신청 플로우 -->
+            <template v-else>
+              <h1 class="text-3xl font-black text-slate-900 mb-6">판매자 전환 신청</h1>
+
+              <!-- 로딩 -->
+              <div v-if="isLoadingApplication" class="flex justify-center py-16">
+                <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+              </div>
+
+              <!-- 신청 없음 -->
+              <div v-else-if="!applicationStatus" class="bg-sky-50 rounded-2xl p-8 border border-sky-100">
+                <div class="flex items-start gap-4">
+                  <div class="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
+                    <Store class="w-6 h-6 text-sky-500" />
+                  </div>
+                  <div>
+                    <h2 class="text-lg font-bold text-slate-900 mb-1">판매자로 활동하고 싶으신가요?</h2>
+                    <p class="text-sm text-slate-500 mb-5">사업자 정보를 입력하고 판매자 전환을 신청하세요. 보통 1~3 영업일 내 심사가 완료됩니다.</p>
+                    <div class="flex gap-3 text-sm text-slate-600 mb-6">
+                      <div class="flex items-center gap-1.5"><CheckCircle class="w-4 h-4 text-emerald-500" />상품/경매 등록</div>
+                      <div class="flex items-center gap-1.5"><CheckCircle class="w-4 h-4 text-emerald-500" />판매 통계 조회</div>
+                      <div class="flex items-center gap-1.5"><CheckCircle class="w-4 h-4 text-emerald-500" />스토어 페이지</div>
+                    </div>
+                    <button
+                      @click="router.push('/seller/apply')"
+                      class="px-8 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full transition-colors"
+                    >
+                      판매자 신청하기
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 심사 중 -->
+              <div v-else-if="applicationStatus === 'PENDING'" class="bg-amber-50 rounded-2xl p-8 border border-amber-100">
+                <div class="flex items-start gap-4">
+                  <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <Clock class="w-6 h-6 text-amber-500" />
+                  </div>
+                  <div class="flex-1">
+                    <h2 class="text-lg font-bold text-slate-900 mb-1">심사가 진행 중입니다</h2>
+                    <p class="text-sm text-slate-500 mb-4">보통 1~3 영업일 내에 결과를 알려드립니다.</p>
+                    <div class="space-y-1 text-sm text-slate-600">
+                      <div><span class="text-slate-400 w-24 inline-block">상호명</span>{{ applicationData?.businessName }}</div>
+                      <div><span class="text-slate-400 w-24 inline-block">신청일</span>{{ applicationData?.createdAt ? formatDate(applicationData.createdAt) : '-' }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 승인됨 → 프로필 설정 필요 -->
+              <div v-else-if="applicationStatus === 'APPROVED' && !hasProfile" class="bg-emerald-50 rounded-2xl p-8 border border-emerald-100">
+                <div class="flex items-start gap-4">
+                  <div class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle class="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <div>
+                    <h2 class="text-lg font-bold text-slate-900 mb-1">판매자 신청이 승인되었습니다! 🎉</h2>
+                    <p class="text-sm text-slate-500 mb-5">스토어 프로필을 설정하면 판매 활동을 시작할 수 있습니다.</p>
+                    <button
+                      @click="router.push('/seller/profile/setup')"
+                      class="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-full transition-colors"
+                    >
+                      프로필 설정하기
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 반려됨 -->
+              <div v-else-if="applicationStatus === 'REJECTED'" class="bg-red-50 rounded-2xl p-8 border border-red-100">
+                <div class="flex items-start gap-4">
+                  <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <XCircle class="w-6 h-6 text-red-500" />
+                  </div>
+                  <div>
+                    <h2 class="text-lg font-bold text-slate-900 mb-1">신청이 반려되었습니다</h2>
+                    <div v-if="applicationData?.rejectionReason" class="mt-2 mb-4 bg-white rounded-xl p-4 border border-red-100 text-sm text-slate-600">
+                      <span class="font-semibold text-red-500 block mb-1">반려 사유</span>
+                      {{ applicationData.rejectionReason }}
+                    </div>
+                    <button
+                      @click="reapply(); router.push('/seller/apply')"
+                      class="px-8 py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full transition-colors"
+                    >
+                      재신청하기
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
 
           <!-- Settings Tab -->
           <div v-show="activeTab === 'settings'">
-            <AccountSettingsTab />
+            <AccountSettingsTab v-if="authUser" :user="authUser" />
           </div>
         </div>
       </div>

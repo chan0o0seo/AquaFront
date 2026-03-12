@@ -1,21 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-
-type ProductStatus = 'ACTIVE' | 'SOLD_OUT' | 'DELETED'
-type ProductType = 'FISH' | 'INVERTEBRATE' | 'PLANT' | 'EQUIPMENT' | 'FOOD' | 'ACCESSORY'
-
-interface SearchResult {
-  id: number
-  name: string
-  price: number
-  thumbnailUrl: string | null
-  status: ProductStatus
-  productType: ProductType
-  tags: string[]
-  sellerNickName: string
-  sellerId: number
-}
+import type { SearchResult } from '@/api'
 
 const props = defineProps<{
   product: SearchResult

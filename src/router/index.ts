@@ -7,7 +7,6 @@ import LoginPage from '../pages/LoginPage.vue'
 import RegisterPage from '../pages/RegisterPage.vue'
 import RegisterCompletePage from '../pages/RegisterCompletePage.vue'
 import MyPage from '../pages/MyPage.vue'
-import SearchPage from '../pages/SearchPage.vue'
 import ProductDetailPage from '../pages/ProductDetailPage.vue'
 import CartPage from '../pages/CartPage.vue'
 import CheckoutPage from '../pages/CheckoutPage.vue'
@@ -21,151 +20,48 @@ import OrderDetailPage from "../pages/OrderDetailPage.vue"
 import CommunityListPage from '../pages/CommunityListPage.vue'
 import CommunityDetailPage from '../pages/CommunityDetailPage.vue'
 import ShopPage from '../pages/ShopPage.vue'
+import SellerListPage from '../pages/SellerListPage.vue'
 import SellerAuctionForm from '../pages/SellerAuctionForm.vue'
 import CommunityWritePage from '../pages/CommunityWritePage.vue'
 import AdminPage from '../pages/AdminPage.vue'
+import ServerErrorPage from '../pages/ServerErrorPage.vue'
+import WithdrawCompletePage from '../pages/WithdrawCompletePage.vue'
 
 const routes: RouteRecordRaw[] = [
-  {
-    path: '/',
-    name: 'Home',
-    component: HomePage
-  },
-  {
-    path: '/login',
-    name: 'Login',
-    component: LoginPage
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: RegisterPage
-  },
-  {
-    path: '/register/complete',
-    name: 'RegisterComplete',
-    component: RegisterCompletePage
-  },
-  {
-    path: '/mypage',
-    name: 'MyPage',
-    component: MyPage
-  },
-  {
-    path: '/search',
-    name: 'Search',
-    component: SearchPage
-  },
-  {
-    path: '/products/:productId',
-    name: 'ProductDetail',
-    component: ProductDetailPage
-  },
-  {
-    path: '/cart',
-    name: 'Cart',
-    component: CartPage
-  },
-  {
-    path: '/checkout',
-    name: 'Checkout',
-    component: CheckoutPage
-  },
-  {
-    path: '/orders/complete',
-    name: 'OrderComplete',
-    component: OrderCompletePage
-  },
-  {
-    path: '/mypage/seller',
-    name: 'SellerDashboard',
-    component: SellerDashboardPage
-  },
-  {
-    path: '/seller/apply',
-    name: 'SellerApply',
-    component: SellerApplyPage
-  },
-  {
-    path: '/seller/apply/complete',
-    name: 'SellerApplyComplete',
-    component: SellerApplyCompletePage
-  },
-  {
-    path: '/seller/profile/setup',
-    name: 'SellerProfileSetup',
-    component: SellerProfileSetupPage
-  },
-  {
-    path: '/seller/profile/edit',
-    name: 'SellerProfileEdit',
-    component: SellerProfileSetupPage
-  },
-  {
-    path: '/seller/products/new',
-    name: 'SellerProductNew',
-    component: SellerProductForm
-  },
-  {
-    path: '/seller/products/:id/edit',
-    name: 'SellerProductEdit',
-    component: SellerProductForm
-  },
-  {
-    path: '/orders/:orderId',
-    name: 'OrderDetail',
-    component: OrderDetailPage
-  },
-  {
-    path: '/auction',
-    name: 'AuctionList',
-    component: AuctionListPage
-  },
-  {
-    path: '/auction/:auctionId',
-    name: 'AuctionDetail',
-    component: AuctionDetailPage
-  },
-  {
-    path: '/store/:sellerId',
-    name: 'SellerStore',
-    component: SellerStorePage
-  },
-  {
-    path: '/community',
-    name: 'CommunityList',
-    component: CommunityListPage
-  },
-  {
-    path: '/community/:postId',
-    name: 'CommunityDetail',
-    component: CommunityDetailPage
-  },
-  {
-    path: '/shop',
-    name: 'Shop',
-    component: ShopPage
-  },
-  {
-    path: '/seller/auctions/new',
-    name: 'SellerAuctionNew',
-    component: SellerAuctionForm
-  },
-  {
-    path: '/community/write',
-    name: 'CommunityWrite',
-    component: CommunityWritePage
-  },
-  {
-    path: '/community/:postId/edit',
-    name: 'CommunityEdit',
-    component: CommunityWritePage
-  },
-  {
-    path: '/admin',
-    name: 'Admin',
-    component: AdminPage
-  }
+  { path: '/', name: 'Home', component: HomePage },
+  { path: '/login', name: 'Login', component: LoginPage, meta: { requiresGuest: true } },
+  { path: '/register', name: 'Register', component: RegisterPage, meta: { requiresGuest: true } },
+  { path: '/register/complete', name: 'RegisterComplete', component: RegisterCompletePage },
+  { path: '/search', redirect: (to) => ({ path: '/shop', query: to.query }) },
+  { path: '/products/:productId', name: 'ProductDetail', component: ProductDetailPage },
+  { path: '/auction', name: 'AuctionList', component: AuctionListPage },
+  { path: '/auction/:auctionId', name: 'AuctionDetail', component: AuctionDetailPage },
+  { path: '/store/:sellerId', name: 'SellerStore', component: SellerStorePage },
+  { path: '/community', name: 'CommunityList', component: CommunityListPage },
+  { path: '/community/write', name: 'CommunityWrite', component: CommunityWritePage },
+  { path: '/community/:postId', name: 'CommunityDetail', component: CommunityDetailPage },
+  { path: '/community/:postId/edit', name: 'CommunityEdit', component: CommunityWritePage },
+  { path: '/shop', name: 'Shop', component: ShopPage },
+  { path: '/stores', name: 'SellerList', component: SellerListPage },
+  { path: '/error', name: 'ServerError', component: ServerErrorPage },
+  { path: '/withdraw/complete', name: 'WithdrawComplete', component: WithdrawCompletePage },
+
+  // 로그인 필요
+  { path: '/mypage', name: 'MyPage', component: MyPage, meta: { requiresAuth: true } },
+  { path: '/mypage/seller', name: 'SellerDashboard', component: SellerDashboardPage, meta: { requiresAuth: true } },
+  { path: '/cart', name: 'Cart', component: CartPage, meta: { requiresAuth: true } },
+  { path: '/checkout', name: 'Checkout', component: CheckoutPage, meta: { requiresAuth: true } },
+  { path: '/orders/complete', name: 'OrderComplete', component: OrderCompletePage, meta: { requiresAuth: true } },
+  { path: '/orders/:orderId', name: 'OrderDetail', component: OrderDetailPage, meta: { requiresAuth: true } },
+  { path: '/seller/apply', name: 'SellerApply', component: SellerApplyPage, meta: { requiresAuth: true } },
+  { path: '/seller/apply/complete', name: 'SellerApplyComplete', component: SellerApplyCompletePage, meta: { requiresAuth: true } },
+  { path: '/seller/profile/setup', name: 'SellerProfileSetup', component: SellerProfileSetupPage, meta: { requiresAuth: true } },
+  { path: '/seller/profile/edit', name: 'SellerProfileEdit', component: SellerProfileSetupPage, meta: { requiresAuth: true } },
+  { path: '/seller/products/new', name: 'SellerProductNew', component: SellerProductForm, meta: { requiresAuth: true } },
+  { path: '/seller/products/:id/edit', name: 'SellerProductEdit', component: SellerProductForm, meta: { requiresAuth: true } },
+  { path: '/seller/auctions/new', name: 'SellerAuctionNew', component: SellerAuctionForm, meta: { requiresAuth: true } },
+  { path: '/admin', name: 'Admin', component: AdminPage, meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
@@ -174,6 +70,35 @@ const router = createRouter({
   scrollBehavior() {
     return { top: 0 }
   }
+})
+
+// 인증 가드
+router.beforeEach(async (to) => {
+  const { useAuthStore } = await import('@/stores/auth')
+  const authStore = useAuthStore()
+
+  if (!authStore.initialized) {
+    await authStore.fetchMe()
+  }
+
+  if (to.meta.requiresAuth && !authStore.isLoggedIn) {
+    return { name: 'Login' }
+  }
+
+  if (to.meta.requiresGuest && authStore.isLoggedIn) {
+    return { name: 'Home' }
+  }
+
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    return { name: 'Home' }
+  }
+
+  // 관리자가 마이페이지 접근 시 관리자 센터로 리다이렉트
+  if (to.name === 'MyPage' && authStore.isAdmin) {
+    return { name: 'Admin' }
+  }
+
+  return true
 })
 
 export default router

@@ -1,34 +1,41 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   LayoutDashboard, Package, Plus, Gavel, TrendingUp,
-  Bell, Settings, ChevronRight, Edit, ArrowLeft
+  Bell, Settings, ChevronRight, Edit, Loader2
 } from 'lucide-vue-next'
 import SellerStatsGrid from '@/components/seller/SellerStatsGrid.vue'
 import SellerProductList from '@/components/seller/SellerProductList.vue'
 import { useSellerApplication } from '@/composables/useSellerApplication'
+import { sellerApi, getThumbnailUrl, type SellerStats, type ProductDetail } from '@/api'
 
 const router = useRouter()
-const { profileData } = useSellerApplication()
+const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
 const activeTab = ref<'home' | 'products'>('home')
 
-// Mock stats
-const stats = ref({
-  totalProducts: 4,
-  soldCount: 27,
-  activeAuctions: 2,
-  followerCount: 138
-})
+const stats = ref<SellerStats | null>(null)
+const recentProducts = ref<ProductDetail[]>([])
+const isLoadingHome = ref(false)
 
-// Mock recent products mini-list for seller home
-const recentProducts = ref([
-  { id: 1, name: '레드 크리스탈 새우 10마리', status: 'ACTIVE' as const, stock: 3, price: 45000 },
-  { id: 2, name: 'ADA 아마조니아 소일 9L',    status: 'ACTIVE' as const, stock: 12, price: 35000 },
-  { id: 3, name: '슈퍼레드 구피 수컷 5마리',  status: 'SOLD_OUT' as const, stock: 0, price: 18000 }
-])
+onMounted(async () => {
+  isLoadingHome.value = true
+  try {
+    await fetchProfile()
+    const [statsData, productsData] = await Promise.all([
+      sellerApi.getStats(),
+      sellerApi.getMyProducts(),
+    ])
+    stats.value = statsData
+    recentProducts.value = productsData.slice(0, 5)
+  } catch (e) {
+    console.error('Failed to load seller dashboard', e)
+  } finally {
+    isLoadingHome.value = false
+  }
+})
 
 const statusBadge = (status: string) => {
   if (status === 'ACTIVE')   return 'bg-emerald-100 text-emerald-700'
@@ -49,22 +56,11 @@ const navItems = [
 
 const goToNewProduct = () => router.push('/seller/products/new')
 const goToProfileEdit = () => router.push('/seller/profile/edit')
-const goBack = () => router.push('/mypage')
 </script>
 
 <template>
   <div class="min-h-screen bg-white">
     <main class="max-w-6xl mx-auto px-6 py-12 mt-16">
-
-      <!-- Back to MyPage -->
-      <button
-        @click="goBack"
-        class="flex items-center gap-1 text-sm text-slate-400 hover:text-sky-500
-               transition-colors mb-6"
-      >
-        <ArrowLeft class="w-4 h-4" />
-        마이페이지
-      </button>
 
       <div class="flex gap-8">
         <!-- ── Seller Sidebar ── -->
@@ -95,7 +91,7 @@ const goBack = () => router.push('/mypage')
                   {{ profileData?.businessName ?? '내 스토어' }}
                 </div>
                 <div class="text-sky-500 text-sm font-semibold mt-1">
-                  팔로워 {{ stats.followerCount }}명
+                  팔로워 {{ profileData?.followerCount ?? 0 }}명
                 </div>
               </div>
 
@@ -180,8 +176,14 @@ const goBack = () => router.push('/mypage')
           <div v-show="activeTab === 'home'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">판매자 홈</h1>
 
+            <!-- Loading -->
+            <div v-if="isLoadingHome" class="flex justify-center py-16">
+              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+            </div>
+
+            <template v-else>
             <!-- Stats grid -->
-            <SellerStatsGrid :stats="stats" />
+            <SellerStatsGrid :stats="stats ?? { totalProducts: 0, soldCount: 0, activeAuctions: 0, followerCount: profileData?.followerCount ?? 0, monthlyRevenue: 0 }" />
 
             <!-- Mini product list -->
             <section class="mt-8">
@@ -204,12 +206,18 @@ const goBack = () => router.push('/mypage')
                   class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-sky-50/50"
                   :class="{ 'border-b border-sky-50': idx < recentProducts.length - 1 }"
                 >
-                  <!-- Thumbnail placeholder -->
+                  <!-- Thumbnail -->
                   <div
                     class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100
-                           flex items-center justify-center flex-shrink-0"
+                           flex items-center justify-center flex-shrink-0 overflow-hidden"
                   >
-                    <Package class="w-6 h-6 text-sky-300" />
+                    <img
+                      v-if="getThumbnailUrl(product)"
+                      :src="getThumbnailUrl(product)!"
+                      :alt="product.name"
+                      class="w-full h-full object-cover"
+                    />
+                    <Package v-else class="w-6 h-6 text-sky-300" />
                   </div>
 
                   <!-- Info -->
@@ -259,6 +267,7 @@ const goBack = () => router.push('/mypage')
                 </button>
               </div>
             </section>
+            </template>
           </div>
 
           <!-- ── TAB: 내 상품 관리 ── -->

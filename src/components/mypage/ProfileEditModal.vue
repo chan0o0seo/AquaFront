@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { X, Loader2, Camera } from 'lucide-vue-next'
+import { useAuthStore,authUser } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const props = defineProps<{
   modelValue: boolean
-  user: {
-    nickname: string
-    initial: string
-    memberType: 'buyer' | 'seller' | 'breeder'
-  }
+  user: authUser
 }>()
 
 const emit = defineEmits<{
@@ -56,14 +55,13 @@ function close() {
   emit('update:modelValue', false)
 }
 
-function save() {
+async function save() {
   if (!validate()) return
   isSaving.value = true
-  setTimeout(() => {
-    isSaving.value = false
-    emit('saved', { nickname: nickname.value.trim() })
-    close()
-  }, 1000)
+  await authStore.updateNickName(nickname.value.trim())
+  isSaving.value = false
+  emit('saved', { nickname: nickname.value.trim() })
+  close()
 }
 
 function onFileChange(e: Event) {

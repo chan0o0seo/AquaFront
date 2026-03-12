@@ -1,83 +1,138 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { Heart, ShoppingCart, Fish } from 'lucide-vue-next'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { Heart, ShoppingCart, Fish, Check } from 'lucide-vue-next'
+import { productApi, getThumbnailUrl, type ProductSummary } from '@/api'
+import { useCartStore } from '@/stores/cart'
 
-interface WishlistItem {
-  id: number
-  name: string
-  seller: string
-  price: number
-  category: '전체' | '어류' | '수초' | '용품'
+const router = useRouter()
+const cartStore = useCartStore()
+
+const wishlistItems = ref<ProductSummary[]>([])
+const isLoading = ref(false)
+
+const typeLabelMap: Record<string, string> = {
+  FISH: '어류', PLANT: '수초', INVERTEBRATE: '새우/갑각류',
+  EQUIPMENT: '용품/장비', ACCESSORY: '소품', FOOD: '사료',
+}
+const typeEmojiMap: Record<string, string> = {
+  FISH: '🐠', PLANT: '🌿', INVERTEBRATE: '🦐', EQUIPMENT: '🔧', ACCESSORY: '🪨', FOOD: '🍃',
 }
 
-const wishlistItems = ref<WishlistItem[]>([
-  { id: 1, name: '레드 크리스탈 새우 10마리', seller: '강남아쿠아리움', price: 45000, category: '어류' },
-  { id: 2, name: 'ADA 아마조니아 소일 9L',    seller: '브리더팜',      price: 35000, category: '용품' },
-  { id: 3, name: '수초 종합 세트',             seller: '수초팜',        price: 28000, category: '수초' },
-  { id: 4, name: '슈퍼레드 구피 수컷 5마리',  seller: '홈브리더김씨',  price: 18000, category: '어류' },
-])
-
-type FilterCategory = '전체' | '어류' | '수초' | '용품'
-const categories: FilterCategory[] = ['전체', '어류', '수초', '용품']
-const activeFilter = ref<FilterCategory>('전체')
+type FilterKey = '전체' | 'FISH' | 'INVERTEBRATE' | 'PLANT' | 'EQUIPMENT' | 'FOOD' | 'ACCESSORY'
+const categories: { key: FilterKey; label: string }[] = [
+  { key: '전체', label: '전체' },
+  { key: 'FISH', label: '어류' },
+  { key: 'INVERTEBRATE', label: '새우/갑각류' },
+  { key: 'PLANT', label: '수초' },
+  { key: 'EQUIPMENT', label: '용품/장비' },
+  { key: 'FOOD', label: '사료' },
+  { key: 'ACCESSORY', label: '소품' },
+]
+const activeFilter = ref<FilterKey>('전체')
 
 const filteredItems = computed(() => {
   if (activeFilter.value === '전체') return wishlistItems.value
-  return wishlistItems.value.filter(item => item.category === activeFilter.value)
+  return wishlistItems.value.filter(item => item.productType === activeFilter.value)
 })
 
-// Cart feedback state: itemId → boolean
 const cartFeedback = ref<Record<number, boolean>>({})
+const showAddedToast = ref(false)
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-function removeWishlist(id: number) {
-  wishlistItems.value = wishlistItems.value.filter(item => item.id !== id)
+async function loadWishlist() {
+  isLoading.value = true
+  try {
+    wishlistItems.value = await productApi.getMyWishlist()
+  } catch (e) {
+    console.error('위시리스트 로드 실패', e)
+  } finally {
+    isLoading.value = false
+  }
 }
 
-function addToCart(id: number) {
-  cartFeedback.value[id] = true
-  setTimeout(() => {
-    delete cartFeedback.value[id]
-  }, 1500)
+async function removeWishlist(id: number) {
+  // 낙관적으로 목록에서 제거
+  wishlistItems.value = wishlistItems.value.filter(item => item.id !== id)
+  try {
+    await productApi.toggleWishlist(id)
+  } catch (e) {
+    // 실패 시 다시 로드
+    console.error('찜 해제 실패', e)
+    loadWishlist()
+  }
+}
+
+function addToCart(item: ProductSummary) {
+  if (item.status === 'SOLD_OUT') return
+  cartStore.addItem({
+    productId: item.id,
+    name: item.name,
+    price: item.price,
+    shippingFee: item.shippingFee,
+    stock: item.stock,
+    status: item.status,
+    productType: item.productType,
+    thumbnailUrl: getThumbnailUrl(item),
+    sellerNickName: item.sellerNickName,
+    lowStockWarning: item.lowStockWarning,
+  })
+  cartFeedback.value[item.id] = true
+  setTimeout(() => { delete cartFeedback.value[item.id] }, 1500)
+  showAddedToast.value = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { showAddedToast.value = false }, 2000)
 }
 
 function formatPrice(price: number) {
   return price.toLocaleString('ko-KR') + '원'
 }
+
+onMounted(loadWishlist)
 </script>
 
 <template>
   <div>
-    <!-- Header -->
     <h1 class="text-3xl font-black text-slate-900 mb-6">찜 목록</h1>
 
-    <!-- Filter Pills -->
-    <div class="flex items-center gap-2 mb-6">
+    <!-- 카테고리 필터 -->
+    <div class="flex items-center gap-2 mb-6 flex-wrap">
       <button
         v-for="cat in categories"
-        :key="cat"
-        @click="activeFilter = cat"
+        :key="cat.key"
+        @click="activeFilter = cat.key"
         class="px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-150 cursor-pointer"
-        :class="activeFilter === cat
+        :class="activeFilter === cat.key
           ? 'bg-sky-500 text-white'
           : 'bg-sky-50 text-slate-600 hover:bg-sky-100'"
       >
-        {{ cat }}
+        {{ cat.label }}
       </button>
     </div>
 
-    <!-- Empty State -->
+    <!-- 로딩 -->
+    <div v-if="isLoading" class="flex justify-center py-20">
+      <div class="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+
+    <!-- 빈 상태 -->
     <div
-      v-if="filteredItems.length === 0"
+      v-else-if="filteredItems.length === 0"
       class="flex flex-col items-center justify-center py-20"
     >
       <Heart class="w-16 h-16 text-slate-200 mb-4" />
-      <p class="text-slate-400 text-base mb-6">아직 찜한 상품이 없어요</p>
-      <button class="bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-full px-8 py-3 transition-colors duration-150">
+      <p class="text-slate-400 text-base mb-6">
+        {{ activeFilter === '전체' ? '아직 찜한 상품이 없어요' : '해당 카테고리의 찜한 상품이 없어요' }}
+      </p>
+      <button
+        @click="router.push('/shop')"
+        class="bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-full px-8 py-3 transition-colors duration-150"
+      >
         쇼핑 시작하기
       </button>
     </div>
 
-    <!-- Product Grid -->
+    <!-- 찜 목록 그리드 -->
     <TransitionGroup
       v-else
       name="wishlist"
@@ -87,41 +142,75 @@ function formatPrice(price: number) {
       <div
         v-for="item in filteredItems"
         :key="item.id"
-        class="bg-white rounded-2xl border border-sky-100 overflow-hidden"
+        class="bg-white rounded-2xl border border-sky-100 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+        @click="router.push(`/products/${item.id}`)"
       >
-        <!-- Image area -->
-        <div class="relative">
-          <div class="bg-gradient-to-br from-sky-100 to-teal-100 aspect-[4/3] w-full rounded-xl mx-0" />
-          <!-- Heart remove button -->
+        <!-- 이미지 -->
+        <div class="relative aspect-[4/3] bg-gradient-to-br from-sky-100 to-teal-100 overflow-hidden">
+          <img
+            v-if="getThumbnailUrl(item)"
+            :src="getThumbnailUrl(item)"
+            :alt="item.name"
+            class="w-full h-full object-cover"
+          />
+          <span v-else class="absolute inset-0 flex items-center justify-center text-5xl">
+            {{ typeEmojiMap[item.productType] ?? '📦' }}
+          </span>
+
+          <div v-if="item.status === 'SOLD_OUT'" class="absolute inset-0 bg-slate-900/40 flex items-center justify-center">
+            <span class="text-white font-black text-sm bg-slate-700/80 px-3 py-1 rounded-full">품절</span>
+          </div>
+
+          <!-- 찜 해제 버튼 -->
           <button
-            @click="removeWishlist(item.id)"
-            class="absolute top-3 right-3 w-9 h-9 flex items-center justify-center rounded-full bg-white/80 hover:bg-white transition-colors duration-150 cursor-pointer"
+            @click.stop="removeWishlist(item.id)"
+            class="absolute top-3 right-3 w-9 h-9 flex items-center justify-center rounded-full bg-white/80 hover:bg-white transition-colors duration-150"
             aria-label="찜 해제"
           >
             <Heart class="w-5 h-5 text-sky-500 fill-sky-500" />
           </button>
+
+          <!-- 카테고리 뱃지 -->
+          <span class="absolute top-3 left-3 text-[10px] px-2 py-0.5 rounded-full font-medium bg-white/80 text-slate-600">
+            {{ typeLabelMap[item.productType] ?? item.productType }}
+          </span>
         </div>
 
-        <!-- Card Body -->
+        <!-- 카드 본문 -->
         <div class="p-4">
-          <p class="font-semibold text-slate-900 text-sm mt-1 leading-snug">{{ item.name }}</p>
+          <p class="font-semibold text-slate-900 text-sm leading-snug line-clamp-2">{{ item.name }}</p>
           <div class="flex items-center justify-between mt-1">
-            <span class="text-xs text-slate-400">{{ item.seller }}</span>
+            <span class="text-xs text-slate-400">{{ item.sellerNickName }}</span>
             <span class="font-bold text-sky-600 text-sm">{{ formatPrice(item.price) }}</span>
           </div>
 
-          <!-- Action Buttons -->
+          <!-- 태그 -->
+          <div class="flex gap-1 mt-2 flex-wrap">
+            <span
+              v-for="tag in item.tags.slice(0, 3)"
+              :key="tag"
+              class="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 border border-sky-100"
+            >
+              {{ tag }}
+            </span>
+          </div>
+
+          <!-- 액션 버튼 -->
           <div class="flex items-center gap-2 mt-3">
             <button
-              @click="removeWishlist(item.id)"
-              class="text-sm text-slate-400 hover:text-red-400 transition-colors duration-150 cursor-pointer"
+              @click.stop="removeWishlist(item.id)"
+              class="text-sm text-slate-400 hover:text-red-400 transition-colors duration-150"
             >
               찜 해제
             </button>
             <div class="flex-1" />
             <button
-              @click="addToCart(item.id)"
-              class="flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold rounded-full px-4 py-2 transition-colors duration-150 cursor-pointer"
+              @click.stop="addToCart(item)"
+              :disabled="item.status === 'SOLD_OUT'"
+              class="flex items-center gap-1.5 text-sm font-semibold rounded-full px-4 py-2 transition-colors duration-150"
+              :class="item.status === 'SOLD_OUT'
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'bg-sky-500 hover:bg-sky-600 text-white'"
             >
               <ShoppingCart v-if="!cartFeedback[item.id]" class="w-4 h-4" />
               <span>{{ cartFeedback[item.id] ? '담겼어요!' : '장바구니 담기' }}</span>
@@ -131,6 +220,31 @@ function formatPrice(price: number) {
       </div>
     </TransitionGroup>
   </div>
+
+  <!-- 장바구니 토스트 -->
+  <Teleport to="body">
+    <Transition
+      enter-active-class="transition-all duration-300 ease-out"
+      enter-from-class="opacity-0 translate-y-4"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition-all duration-200 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 translate-y-4"
+    >
+      <div
+        v-if="showAddedToast"
+        class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 whitespace-nowrap"
+      >
+        <div class="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+          <Check :size="14" class="text-white" />
+        </div>
+        <span class="font-medium">장바구니에 담았어요</span>
+        <router-link to="/cart" class="text-sky-400 hover:text-sky-300 text-sm font-medium ml-2">
+          바로가기 →
+        </router-link>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>

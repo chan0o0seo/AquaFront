@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Store, FlaskConical, Check, Loader2, MapPin, Info } from 'lucide-vue-next'
+import { ArrowLeft, Check, Loader2, MapPin, Info } from 'lucide-vue-next'
 import { useSellerApplication } from '@/composables/useSellerApplication'
 
 const router = useRouter()
 const { submitApplication, isLoading, error } = useSellerApplication()
-
-// Member type selection
-type MemberType = 'SELLER' | 'BREEDER' | null
-const selectedMemberType = ref<MemberType>(null)
 
 // Form state
 const form = reactive({
@@ -62,7 +58,6 @@ const isBusinessRegPartiallyFilled = computed(() => {
 
 const isFormValid = computed(() => {
   return (
-    selectedMemberType.value !== null &&
     form.businessName.trim().length > 0 &&
     isBusinessRegValid.value &&
     form.businessAddress.trim().length > 0 &&
@@ -86,7 +81,7 @@ const handleSubmit = async () => {
     businessName: form.businessName,
     businessRegistrationNumber: form.businessRegistrationNumber,
     businessAddress: form.businessAddress,
-    businessPhoneNumber: form.businessPhoneNumber
+    businessPhoneNumber: form.businessPhoneNumber,
   })
   
   if (success) {
@@ -118,66 +113,6 @@ const goBack = () => {
         <p class="text-slate-400 text-sm mt-2">
           아쿠아 Hub의 판매자로 활동하시려면 사업자 정보를 입력해주세요.
         </p>
-
-        <!-- Member Type Selection -->
-        <div class="mt-8">
-          <p class="text-sm font-semibold text-slate-700 mb-3">회원 유형 선택</p>
-          <div class="grid grid-cols-2 gap-4">
-            <!-- SELLER Card -->
-            <button
-              @click="selectedMemberType = 'SELLER'"
-              class="text-left rounded-2xl border-2 p-5 cursor-pointer transition-all duration-150"
-              :class="[
-                selectedMemberType === 'SELLER' 
-                  ? 'border-sky-400 bg-sky-50' 
-                  : 'border-slate-200 bg-white hover:border-slate-300'
-              ]"
-            >
-              <div class="flex items-center gap-2 mb-2">
-                <Store class="w-5 h-5" :class="selectedMemberType === 'SELLER' ? 'text-sky-500' : 'text-slate-400'" />
-                <span class="font-bold" :class="selectedMemberType === 'SELLER' ? 'text-sky-700' : 'text-slate-700'">
-                  수족관 운영자
-                </span>
-              </div>
-              <p class="text-sm text-slate-500">
-                오프라인 또는 온라인 수족관을 운영 중이에요
-              </p>
-              <div 
-                v-if="selectedMemberType === 'SELLER'"
-                class="mt-3 w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center"
-              >
-                <Check class="w-4 h-4 text-white" />
-              </div>
-            </button>
-
-            <!-- BREEDER Card -->
-            <button
-              @click="selectedMemberType = 'BREEDER'"
-              class="text-left rounded-2xl border-2 p-5 cursor-pointer transition-all duration-150"
-              :class="[
-                selectedMemberType === 'BREEDER' 
-                  ? 'border-sky-400 bg-sky-50' 
-                  : 'border-slate-200 bg-white hover:border-slate-300'
-              ]"
-            >
-              <div class="flex items-center gap-2 mb-2">
-                <FlaskConical class="w-5 h-5" :class="selectedMemberType === 'BREEDER' ? 'text-sky-500' : 'text-slate-400'" />
-                <span class="font-bold" :class="selectedMemberType === 'BREEDER' ? 'text-sky-700' : 'text-slate-700'">
-                  홈 브리더
-                </span>
-              </div>
-              <p class="text-sm text-slate-500">
-                직접 키운 개체를 경매로 판매하고 싶어요
-              </p>
-              <div 
-                v-if="selectedMemberType === 'BREEDER'"
-                class="mt-3 w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center"
-              >
-                <Check class="w-4 h-4 text-white" />
-              </div>
-            </button>
-          </div>
-        </div>
 
         <!-- Form Fields -->
         <div class="mt-8 space-y-5">

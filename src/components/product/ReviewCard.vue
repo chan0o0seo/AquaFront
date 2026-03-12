@@ -4,7 +4,7 @@ import { Star } from 'lucide-vue-next'
 
 interface Review {
   id: number
-  reviewerId: number
+  reviewerId: string
   reviewerNickName: string
   rating: number
   content: string
@@ -14,7 +14,7 @@ interface Review {
 
 interface Props {
   review: Review
-  currentUserId?: number | null
+  currentUserId?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -22,7 +22,6 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  (e: 'edit', review: Review): void
   (e: 'delete', reviewId: number): void
 }>()
 
@@ -58,22 +57,14 @@ const avatarLetter = computed(() => {
         </div>
       </div>
       
-      <!-- Edit/Delete buttons (own review only) -->
-      <div v-show="isOwn" class="flex gap-2">
-        <button
-          @click="emit('edit', review)"
-          class="text-sm text-slate-400 hover:text-sky-500 transition-colors"
-        >
-          수정
-        </button>
-        <span class="text-slate-200">|</span>
-        <button
-          @click="emit('delete', review.id)"
-          class="text-sm text-slate-400 hover:text-red-500 transition-colors"
-        >
-          삭제
-        </button>
-      </div>
+      <!-- Delete button (own review only) -->
+      <button
+        v-show="isOwn"
+        @click="emit('delete', review.id)"
+        class="text-sm text-slate-400 hover:text-red-500 transition-colors"
+      >
+        삭제
+      </button>
     </div>
     
     <!-- Stars -->

@@ -1,67 +1,33 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Edit, Trash2, Package, AlertTriangle, Loader2 } from 'lucide-vue-next'
+import { Edit, Trash2, Package, AlertTriangle, Loader2, ToggleLeft, ToggleRight } from 'lucide-vue-next'
+import { sellerApi, getThumbnailUrl, type ProductDetail } from '@/api'
 
 type ProductStatus = 'ACTIVE' | 'SOLD_OUT' | 'DELETED'
 type FilterStatus = 'ALL' | 'ACTIVE' | 'SOLD_OUT'
 
-interface Product {
-  id: number
-  name: string
-  imageUrls: string[]
-  price: number
-  stock: number
-  status: ProductStatus
-  productType: string
-  createdAt: string
-}
+type Product = ProductDetail
 
-// Mock products
-const products = ref<Product[]>([
-  {
-    id: 1,
-    name: '레드 크리스탈 새우 10마리',
-    imageUrls: [],
-    price: 45000,
-    stock: 3,
-    status: 'ACTIVE',
-    productType: 'INVERTEBRATE',
-    createdAt: '2025-01-15T00:00:00Z'
-  },
-  {
-    id: 2,
-    name: 'ADA 아마조니아 소일 9L',
-    imageUrls: [],
-    price: 35000,
-    stock: 12,
-    status: 'ACTIVE',
-    productType: 'EQUIPMENT',
-    createdAt: '2025-01-14T00:00:00Z'
-  },
-  {
-    id: 3,
-    name: '슈퍼레드 구피 수컷 5마리',
-    imageUrls: [],
-    price: 18000,
-    stock: 0,
-    status: 'SOLD_OUT',
-    productType: 'FISH',
-    createdAt: '2025-01-10T00:00:00Z'
-  },
-  {
-    id: 4,
-    name: '남미 모스 컵',
-    imageUrls: [],
-    price: 8000,
-    stock: 20,
-    status: 'ACTIVE',
-    productType: 'PLANT',
-    createdAt: '2025-01-08T00:00:00Z'
-  }
-])
+const products = ref<Product[]>([])
+const isLoading = ref(false)
+const loadError = ref('')
 
 const router = useRouter()
+
+async function fetchProducts() {
+  isLoading.value = true
+  loadError.value = ''
+  try {
+    products.value = await sellerApi.getMyProducts()
+  } catch {
+    loadError.value = '상품 목록을 불러오는 데 실패했습니다.'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(fetchProducts)
 
 // Filter state
 const filterStatus = ref<FilterStatus>('ALL')
@@ -77,6 +43,9 @@ const isSavingStock = ref(false)
 // Delete confirm state
 const confirmDeleteId = ref<number | null>(null)
 const isDeletingId = ref<number | null>(null)
+
+// Status toggle state
+const isTogglingStatusId = ref<number | null>(null)
 
 // Filtered products
 const filteredProducts = computed(() => {
@@ -115,11 +84,12 @@ const saveStock = async (product: Product) => {
   if (isSavingStock.value) return
   isSavingStock.value = true
   try {
-    // PATCH /api/products/{productId}/stock
-    await new Promise(resolve => setTimeout(resolve, 600))
-    product.stock = editingStockValue.value
-    product.status = editingStockValue.value === 0 ? 'SOLD_OUT' : 'ACTIVE'
+    const updated = await sellerApi.updateStock(product.id, editingStockValue.value)
+    product.stock = updated.stock
+    product.status = updated.status as ProductStatus
     editingStockId.value = null
+  } catch {
+    // ignore — keep modal open
   } finally {
     isSavingStock.value = false
   }
@@ -139,12 +109,28 @@ const deleteProduct = async (id: number) => {
   if (isDeletingId.value) return
   isDeletingId.value = id
   try {
-    // DELETE /api/products/{id}
-    await new Promise(resolve => setTimeout(resolve, 700))
+    await sellerApi.deleteProduct(id)
     products.value = products.value.filter(p => p.id !== id)
     confirmDeleteId.value = null
+  } catch {
+    // ignore
   } finally {
     isDeletingId.value = null
+  }
+}
+
+const toggleStatus = async (product: Product) => {
+  if (isTogglingStatusId.value) return
+  isTogglingStatusId.value = product.id
+  const prev = product.status
+  product.status = prev === 'ACTIVE' ? 'SOLD_OUT' : 'ACTIVE'
+  try {
+    const updated = await sellerApi.toggleStatus(product.id)
+    product.status = updated.status as ProductStatus
+  } catch {
+    product.status = prev
+  } finally {
+    isTogglingStatusId.value = null
   }
 }
 
@@ -211,8 +197,19 @@ const goToNew = () => {
       </div>
     </div>
 
-    <!-- Empty state -->
-    <div v-if="filteredProducts.length === 0" class="text-center py-20 bg-sky-50 rounded-2xl border border-sky-100">
+    <!-- Loading -->
+    <div v-if="isLoading" class="flex justify-center py-20">
+      <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+    </div>
+
+    <!-- Load error -->
+    <div v-else-if="loadError" class="text-center py-20 bg-red-50 rounded-2xl border border-red-100">
+      <p class="text-red-500">{{ loadError }}</p>
+      <button @click="fetchProducts" class="mt-3 text-sm text-sky-500 font-semibold hover:underline">다시 시도</button>
+    </div>
+
+    <!-- Empty state: 전체 상품이 없을 때 -->
+    <div v-else-if="products.length === 0" class="text-center py-20 bg-sky-50 rounded-2xl border border-sky-100">
       <Package class="w-12 h-12 text-sky-200 mx-auto mb-3" />
       <p class="text-slate-400 font-medium">등록된 상품이 없어요</p>
       <button
@@ -223,8 +220,22 @@ const goToNew = () => {
       </button>
     </div>
 
+    <!-- Empty state: 필터 결과가 없을 때 -->
+    <div v-else-if="filteredProducts.length === 0" class="text-center py-16 bg-sky-50 rounded-2xl border border-sky-100">
+      <Package class="w-10 h-10 text-sky-200 mx-auto mb-3" />
+      <p class="text-slate-400 font-medium">
+        {{ filterStatus === 'SOLD_OUT' ? '품절 상품이 없어요' : '판매중인 상품이 없어요' }}
+      </p>
+      <button
+        @click="filterStatus = 'ALL'"
+        class="mt-3 text-sky-500 text-sm font-semibold hover:underline"
+      >
+        전체 보기
+      </button>
+    </div>
+
     <!-- ── GRID VIEW ── -->
-    <div v-show="viewMode === 'grid'" class="grid grid-cols-2 gap-4">
+    <div v-if="!isLoading && !loadError" v-show="viewMode === 'grid'" class="grid grid-cols-2 gap-4">
       <div
         v-for="product in filteredProducts"
         :key="product.id"
@@ -234,8 +245,8 @@ const goToNew = () => {
         <!-- Thumbnail -->
         <div class="aspect-square bg-gradient-to-br from-sky-100 to-teal-100 relative">
           <img
-            v-if="product.imageUrls[0]"
-            :src="product.imageUrls[0]"
+            v-if="getThumbnailUrl(product)"
+            :src="getThumbnailUrl(product)!"
             :alt="product.name"
             class="w-full h-full object-cover"
           />
@@ -329,10 +340,23 @@ const goToNew = () => {
             </button>
             <button
               @click="openStockEdit(product)"
-              class="flex-1 px-3 py-1.5 text-xs text-slate-500 hover:text-sky-600
+              class="px-3 py-1.5 text-xs text-slate-500 hover:text-sky-600
                      border border-slate-200 hover:border-sky-200 rounded-xl transition-all"
             >
-              재고 변경
+              재고
+            </button>
+            <button
+              @click="toggleStatus(product)"
+              :disabled="isTogglingStatusId === product.id"
+              class="flex items-center gap-1 px-3 py-1.5 text-xs rounded-xl transition-all disabled:opacity-50"
+              :class="product.status === 'ACTIVE'
+                ? 'text-slate-500 hover:text-amber-600 border border-slate-200 hover:border-amber-200'
+                : 'text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-300'"
+            >
+              <Loader2 v-if="isTogglingStatusId === product.id" class="w-3 h-3 animate-spin" />
+              <ToggleRight v-else-if="product.status === 'ACTIVE'" class="w-3 h-3" />
+              <ToggleLeft v-else class="w-3 h-3" />
+              {{ product.status === 'ACTIVE' ? '품절' : '판매' }}
             </button>
             <button
               @click="openDeleteConfirm(product.id)"
@@ -347,7 +371,7 @@ const goToNew = () => {
     </div>
 
     <!-- ── TABLE VIEW ── -->
-    <div v-show="viewMode === 'table'" class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
+    <div v-if="!isLoading && !loadError" v-show="viewMode === 'table'" class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-sky-50">
@@ -367,8 +391,8 @@ const goToNew = () => {
                   <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100 flex-shrink-0
                               flex items-center justify-center overflow-hidden">
                     <img
-                      v-if="product.imageUrls[0]"
-                      :src="product.imageUrls[0]"
+                      v-if="getThumbnailUrl(product)"
+                      :src="getThumbnailUrl(product)!"
                       :alt="product.name"
                       class="w-full h-full object-cover"
                     />
@@ -413,6 +437,20 @@ const goToNew = () => {
                            border border-slate-200 hover:border-sky-200 rounded-lg transition-all"
                   >
                     재고
+                  </button>
+                  <button
+                    @click="toggleStatus(product)"
+                    :disabled="isTogglingStatusId === product.id"
+                    class="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg transition-all disabled:opacity-50"
+                    :class="product.status === 'ACTIVE'
+                      ? 'text-slate-500 hover:text-amber-600 border border-slate-200 hover:border-amber-200'
+                      : 'text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-300'"
+                    :title="product.status === 'ACTIVE' ? '품절 처리' : '판매 재개'"
+                  >
+                    <Loader2 v-if="isTogglingStatusId === product.id" class="w-3 h-3 animate-spin" />
+                    <ToggleRight v-else-if="product.status === 'ACTIVE'" class="w-3 h-3" />
+                    <ToggleLeft v-else class="w-3 h-3" />
+                    {{ product.status === 'ACTIVE' ? '품절' : '판매' }}
                   </button>
                   <button
                     @click="openDeleteConfirm(product.id)"

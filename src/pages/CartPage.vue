@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Check, Loader2 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -24,6 +24,13 @@ const {
 const { toggleCheck, updateQuantity, removeItem, clearCart, clearChecked } = cartStore
 
 const isLoading = ref(false)
+const isSyncing = ref(false)
+
+onMounted(async () => {
+  isSyncing.value = true
+  await cartStore.syncCartItems()
+  isSyncing.value = false
+})
 
 const handleClearAll = () => {
   if (confirm('장바구니를 비우시겠습니까?')) {
@@ -74,8 +81,14 @@ const sellerGroups = computed(() => {
       </button>
     </div>
 
+    <!-- Syncing indicator -->
+    <div v-if="isSyncing" class="flex items-center gap-2 mb-4 text-sm text-slate-400">
+      <Loader2 class="w-4 h-4 animate-spin text-sky-400" />
+      상품 정보를 최신화하는 중...
+    </div>
+
     <!-- Empty State -->
-    <CartEmptyState v-show="cartItems.length === 0" />
+    <CartEmptyState v-show="cartItems.length === 0 && !isSyncing" />
 
     <!-- Cart Content -->
     <div v-show="cartItems.length > 0" class="flex flex-col lg:flex-row gap-8 items-start">

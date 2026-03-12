@@ -1,152 +1,42 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Gavel, Clock, TrendingUp, Filter, ChevronRight, Search } from 'lucide-vue-next'
+import { Gavel, Clock, TrendingUp, Search } from 'lucide-vue-next'
+import { auctionApi, type AuctionSummary } from '@/api'
 
 const router = useRouter()
 
-type AuctionStatus = 'LIVE' | 'UPCOMING' | 'ENDED'
 type AuctionCategory = '전체' | '어류' | '새우/갑각류' | '수초' | '용품'
-
-interface Auction {
-  id: number
-  name: string
-  breeder: string
-  breederInitial: string
-  currentBid: number
-  startBid: number
-  bidCount: number
-  timeLeft: number // seconds
-  status: AuctionStatus
-  category: string
-  tags: string[]
-}
 
 const activeFilter = ref<AuctionCategory>('전체')
 const searchQuery = ref('')
-
 const categories: AuctionCategory[] = ['전체', '어류', '새우/갑각류', '수초', '용품']
 
-const auctions = ref<Auction[]>([
-  {
-    id: 1,
-    name: 'L-333 킹로얄 플레코 (성어 1마리)',
-    breeder: '플레코마스터',
-    breederInitial: '플',
-    currentBid: 85000,
-    startBid: 30000,
-    bidCount: 12,
-    timeLeft: 8073,
-    status: 'LIVE',
-    category: '어류',
-    tags: ['플레코', 'L번호', '희귀종']
-  },
-  {
-    id: 2,
-    name: '슈퍼레드 아로와나 (25cm)',
-    breeder: '아로와나팜',
-    breederInitial: '아',
-    currentBid: 2500000,
-    startBid: 1000000,
-    bidCount: 7,
-    timeLeft: 12453,
-    status: 'LIVE',
-    category: '어류',
-    tags: ['아로와나', '고급어종']
-  },
-  {
-    id: 3,
-    name: '블루다이아몬드 디스커스 (3마리 세트)',
-    breeder: '디스커스월드',
-    breederInitial: '디',
-    currentBid: 180000,
-    startBid: 80000,
-    bidCount: 24,
-    timeLeft: 1820,
-    status: 'LIVE',
-    category: '어류',
-    tags: ['디스커스', '열대어']
-  },
-  {
-    id: 4,
-    name: '크리스탈 레드 쉬림프 S급 (10마리)',
-    breeder: '새우천국',
-    breederInitial: '새',
-    currentBid: 65000,
-    startBid: 20000,
-    bidCount: 18,
-    timeLeft: 3412,
-    status: 'LIVE',
-    category: '새우/갑각류',
-    tags: ['CRS', 'S급', '크리스탈']
-  },
-  {
-    id: 5,
-    name: '풀레드 구피 트리오 (1쌍+수컷)',
-    breeder: '구피팜',
-    breederInitial: '구',
-    currentBid: 45000,
-    startBid: 15000,
-    bidCount: 9,
-    timeLeft: 21600,
-    status: 'LIVE',
-    category: '어류',
-    tags: ['구피', '풀레드', '초보추천']
-  },
-  {
-    id: 6,
-    name: '대형 부세파란드라 (희귀 변종)',
-    breeder: '수초팜',
-    breederInitial: '수',
-    currentBid: 120000,
-    startBid: 50000,
-    bidCount: 15,
-    timeLeft: 43200,
-    status: 'UPCOMING',
-    category: '수초',
-    tags: ['부세파란드라', '희귀수초']
-  },
-  {
-    id: 7,
-    name: 'ADA 뉴 아마조니아 소일 9L (미개봉)',
-    breeder: '용품마켓',
-    breederInitial: '용',
-    currentBid: 28000,
-    startBid: 20000,
-    bidCount: 4,
-    timeLeft: 0,
-    status: 'ENDED',
-    category: '용품',
-    tags: ['ADA', '소일', '수초용']
-  },
-  {
-    id: 8,
-    name: '골든 아이 코리도라스 (5마리)',
-    breeder: '코리팜',
-    breederInitial: '코',
-    currentBid: 38000,
-    startBid: 15000,
-    bidCount: 11,
-    timeLeft: 0,
-    status: 'ENDED',
-    category: '어류',
-    tags: ['코리도라스', '청소부']
-  },
-])
+const auctions = ref<AuctionSummary[]>([])
+const isLoading = ref(true)
+const now = ref(Date.now())
 
-// 실시간 카운트다운
+// 1초마다 now 갱신으로 카운트다운
 let interval: ReturnType<typeof setInterval>
-onMounted(() => {
-  interval = setInterval(() => {
-    auctions.value = auctions.value.map(a => ({
-      ...a,
-      timeLeft: a.status === 'LIVE' ? Math.max(0, a.timeLeft - 1) : a.timeLeft
-    }))
-  }, 1000)
+onMounted(async () => {
+  try {
+    const data = await auctionApi.getList()
+    auctions.value = data.content
+  } catch (e) {
+    console.error('Failed to load auctions', e)
+  } finally {
+    isLoading.value = false
+  }
+  interval = setInterval(() => { now.value = Date.now() }, 1000)
 })
 onUnmounted(() => clearInterval(interval))
 
-const formatTime = (seconds: number) => {
+const getSecondsLeft = (endsAt: string) => {
+  return Math.max(0, Math.floor((new Date(endsAt).getTime() - now.value) / 1000))
+}
+
+const formatTime = (endsAt: string) => {
+  const seconds = getSecondsLeft(endsAt)
   if (seconds <= 0) return '종료'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -155,14 +45,17 @@ const formatTime = (seconds: number) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-const isEndingSoon = (seconds: number) => seconds > 0 && seconds < 3600 // 1시간 미만
+const isEndingSoon = (endsAt: string) => {
+  const s = getSecondsLeft(endsAt)
+  return s > 0 && s < 3600
+}
 
 const filteredAuctions = computed(() => {
   return auctions.value.filter(a => {
     const categoryMatch = activeFilter.value === '전체' || a.category === activeFilter.value
     const searchMatch = searchQuery.value === '' ||
       a.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      a.breeder.includes(searchQuery.value) ||
+      a.sellerNickName.includes(searchQuery.value) ||
       a.tags.some(t => t.includes(searchQuery.value))
     return categoryMatch && searchMatch
   })
@@ -233,7 +126,7 @@ const liveCount = computed(() => auctions.value.filter(a => a.status === 'LIVE')
             <span class="text-xs text-slate-500">종료 임박</span>
           </div>
           <div class="text-2xl font-black text-amber-500">
-            {{ auctions.filter(a => isEndingSoon(a.timeLeft)).length }}
+            {{ auctions.filter(a => isEndingSoon(a.endsAt)).length }}
           </div>
         </div>
         <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100">
@@ -290,10 +183,10 @@ const liveCount = computed(() => auctions.value.filter(a => a.status === 'LIVE')
 
             <!-- Timer pill (ending soon) -->
             <div
-              v-if="auction.status === 'LIVE' && isEndingSoon(auction.timeLeft)"
+              v-if="auction.status === 'LIVE' && isEndingSoon(auction.endsAt)"
               class="absolute bottom-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-xs font-mono font-bold px-3 py-1 rounded-full"
             >
-              ⏱ {{ formatTime(auction.timeLeft) }}
+              ⏱ {{ formatTime(auction.endsAt) }}
             </div>
           </div>
 
@@ -304,12 +197,12 @@ const liveCount = computed(() => auctions.value.filter(a => a.status === 'LIVE')
               {{ auction.name }}
             </h3>
 
-            <!-- Breeder -->
+            <!-- Seller -->
             <div class="flex items-center gap-2 mb-3">
               <div class="w-5 h-5 rounded-full bg-gradient-to-br from-sky-300 to-teal-400 flex items-center justify-center text-white text-[10px] font-black">
-                {{ auction.breederInitial }}
+                {{ auction.sellerNickName.charAt(0) }}
               </div>
-              <span class="text-xs text-slate-400">{{ auction.breeder }}</span>
+              <span class="text-xs text-slate-400">{{ auction.sellerNickName }}</span>
             </div>
 
             <!-- Bid Info -->
@@ -322,9 +215,9 @@ const liveCount = computed(() => auctions.value.filter(a => a.status === 'LIVE')
               <div class="text-right">
                 <p
                   class="text-xs font-mono font-bold"
-                  :class="isEndingSoon(auction.timeLeft) ? 'text-amber-500' : 'text-slate-400'"
+                  :class="isEndingSoon(auction.endsAt) ? 'text-amber-500' : 'text-slate-400'"
                 >
-                  <template v-if="auction.status === 'LIVE'">{{ formatTime(auction.timeLeft) }}</template>
+                  <template v-if="auction.status === 'LIVE'">{{ formatTime(auction.endsAt) }}</template>
                   <template v-else-if="auction.status === 'UPCOMING'">곧 시작</template>
                   <template v-else>낙찰 완료</template>
                 </p>

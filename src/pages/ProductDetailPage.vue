@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Star, ShoppingCart, Shield, Thermometer, Fish, Check, Heart } from 'lucide-vue-next'
 import { useCartStore } from '../stores/cart'
+import { useAuthStore } from '@/stores/auth'
+import { productApi } from '@/api'
+import { storeToRefs } from 'pinia'
 import ProductImageGallery from '../components/product/ProductImageGallery.vue'
 import ProductBioSpecs from '../components/product/ProductBioSpecs.vue'
 import QuantitySelector from '../components/product/QuantitySelector.vue'
@@ -11,6 +14,13 @@ import ReviewCard from '../components/product/ReviewCard.vue'
 import ReviewWriteForm from '../components/product/ReviewWriteForm.vue'
 
 // Types
+interface ProductImageItem {
+  id: number
+  imageUrl: string
+  sortOrder: number
+  representative: boolean
+}
+
 interface Product {
   id: number
   name: string
@@ -21,10 +31,9 @@ interface Product {
   status: 'ACTIVE' | 'SOLD_OUT' | 'DELETED'
   productType: 'FISH' | 'INVERTEBRATE' | 'PLANT' | 'EQUIPMENT' | 'FOOD' | 'ACCESSORY'
   categoryName: string | null
-  thumbnailUrl: string | null
-  imageUrls: string[]
+  images: ProductImageItem[]
   tags: string[]
-  sellerId: number
+  sellerId: string
   sellerNickName: string
   averageRating: number
   reviewCount: number
@@ -42,7 +51,7 @@ interface Product {
 
 interface Review {
   id: number
-  reviewerId: number
+  reviewerId: string
   reviewerNickName: string
   rating: number
   content: string
@@ -59,6 +68,8 @@ interface ReviewForm {
 const route = useRoute()
 const router = useRouter()
 const cartStore = useCartStore()
+const authStore = useAuthStore()
+const { isLoggedIn, user: authUser } = storeToRefs(authStore)
 
 // Wishlist state
 const isWishlisted = ref(false)
@@ -66,11 +77,16 @@ const isTogglingWishlist = ref(false)
 const heartAnimating = ref(false)
 
 const toggleWishlist = async () => {
-  if (isTogglingWishlist.value) return
+  if (!isLoggedIn.value) { router.push('/login'); return }
+  if (isTogglingWishlist.value || !product.value) return
   isTogglingWishlist.value = true
-  await new Promise(resolve => setTimeout(resolve, 400))
-  isWishlisted.value = !isWishlisted.value
-  isTogglingWishlist.value = false
+  try {
+    isWishlisted.value = await productApi.toggleWishlist(product.value.id)
+  } catch (e) {
+    console.error('Wishlist toggle failed', e)
+  } finally {
+    isTogglingWishlist.value = false
+  }
 }
 
 watch(isWishlisted, () => {
@@ -90,12 +106,10 @@ const isLoadingReviews = ref(false)
 const quantity = ref(1)
 const activeTab = ref<'description' | 'reviews' | 'specs'>('description')
 const isWritingReview = ref(false)
-const editingReviewId = ref<number | null>(null)
 const isSubmittingReview = ref(false)
+const canReview = ref(false)
 
-// Mock current user (in real app, from auth store)
-const currentUserId = ref<number | null>(1)
-const isLoggedIn = computed(() => currentUserId.value !== null)
+const currentUserId = computed<string | null>(() => authUser.value?.id ?? null)
 
 // Badge mappings
 const productTypeLabels: Record<string, { label: string; class: string }> = {
@@ -152,46 +166,19 @@ const filledStars = computed(() => {
 const fetchProduct = async (productId: string) => {
   isLoadingProduct.value = true
   try {
-    // Mock API call - replace with actual fetch
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    // Mock data
-    product.value = {
-      id: parseInt(productId),
-      name: '풀레드 구피 (1쌍)',
-      description: '건강하고 아름다운 풀레드 구피입니다.\n\n색상이 선명하고 지느러미가 넓어 관상용으로 최고입니다.\n\n초보자도 쉽게 기를 수 있으며, 번식력이 좋아 개체 증식에도 적합합니다.\n\n수온 24~28도, pH 7.0~7.5에서 최적의 상태를 유지합니다.',
-      price: 15000,
-      shippingFee: 3000,
-      stock: 5,
-      status: 'ACTIVE',
-      productType: 'FISH',
-      categoryName: '열대어 > 난태생어',
-      thumbnailUrl: 'https://picsum.photos/seed/guppy1/600/600',
-      imageUrls: [
-        'https://picsum.photos/seed/guppy1/600/600',
-        'https://picsum.photos/seed/guppy2/600/600',
-        'https://picsum.photos/seed/guppy3/600/600',
-        'https://picsum.photos/seed/guppy4/600/600'
-      ],
-      tags: ['구피', '열대어', '초보추천', '번식용'],
-      sellerId: 101,
-      sellerNickName: '아쿠아팜',
-      averageRating: 4.7,
-      reviewCount: 23,
-      lowStockWarning: true,
-      waterType: 'FRESHWATER',
-      difficulty: 'BEGINNER',
-      waterTemperatureMin: 24,
-      waterTemperatureMax: 28,
-      phMin: 7.0,
-      phMax: 7.5,
-      isCompatible: true,
-      minimumTankSize: 20,
-      brand: null
+    const [detail] = await Promise.all([
+      productApi.getDetail(parseInt(productId)),
+      fetchReviews(productId, true),
+    ])
+    product.value = detail
+    if (isLoggedIn.value) {
+      const [wishlistStatus, eligibility] = await Promise.all([
+        productApi.getWishlistStatus(parseInt(productId)),
+        productApi.getReviewEligibility(parseInt(productId)),
+      ])
+      isWishlisted.value = wishlistStatus
+      canReview.value = eligibility
     }
-
-    // Fetch reviews after product
-    await fetchReviews(productId, true)
   } catch (error) {
     console.error('Failed to fetch product:', error)
   } finally {
@@ -209,51 +196,13 @@ const fetchReviews = async (productId: string, reset = false) => {
       reviews.value = []
     }
 
-    // Mock API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // Mock reviews data
-    const mockReviews: Review[] = [
-      {
-        id: 1,
-        reviewerId: 1,
-        reviewerNickName: '물생활러버',
-        rating: 5,
-        content: '정말 건강하고 예쁜 구피가 왔어요! 색상도 사진과 똑같고, 패킹도 꼼꼼하게 해주셔서 감사합니다. 다음에도 여기서 구매할게요!',
-        imageUrls: ['https://picsum.photos/seed/review1/200/200'],
-        createdAt: '2024-01-15T10:30:00'
-      },
-      {
-        id: 2,
-        reviewerId: 2,
-        reviewerNickName: '초보어항',
-        rating: 4,
-        content: '처음 키우는 열대어인데 잘 적응하고 있어요. 다만 배송이 조금 늦어서 별 하나 뺄게요.',
-        imageUrls: [],
-        createdAt: '2024-01-10T14:20:00'
-      },
-      {
-        id: 3,
-        reviewerId: 3,
-        reviewerNickName: '구피매니아',
-        rating: 5,
-        content: '풀레드 색상이 정말 진해요. 다른 구피들이랑 같이 키우���데 합사도 잘 되네요.',
-        imageUrls: [
-          'https://picsum.photos/seed/review3a/200/200',
-          'https://picsum.photos/seed/review3b/200/200'
-        ],
-        createdAt: '2024-01-05T09:15:00'
-      }
-    ]
-
-    if (reviewPage.value === 0) {
-      reviews.value = mockReviews
+    const data = await productApi.getReviews(parseInt(productId), reviewPage.value)
+    if (reset) {
+      reviews.value = data.content
     } else {
-      reviews.value = [...reviews.value, ...mockReviews]
+      reviews.value = [...reviews.value, ...data.content]
     }
-
-    // Mock pagination
-    reviewHasMore.value = reviewPage.value < 2
+    reviewHasMore.value = !data.last
   } catch (error) {
     console.error('Failed to fetch reviews:', error)
   } finally {
@@ -270,36 +219,16 @@ const loadMoreReviews = () => {
 
 // Review Actions
 const handleReviewSubmit = async (form: ReviewForm) => {
+  if (!product.value) return
   isSubmittingReview.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    if (editingReviewId.value) {
-      // Update existing review
-      const index = reviews.value.findIndex(r => r.id === editingReviewId.value)
-      if (index !== -1) {
-        reviews.value[index] = {
-          ...reviews.value[index],
-          rating: form.rating,
-          content: form.content,
-          imageUrls: form.imageUrls
-        }
-      }
-      editingReviewId.value = null
-    } else {
-      // Create new review
-      const newReview: Review = {
-        id: Date.now(),
-        reviewerId: currentUserId.value!,
-        reviewerNickName: '내 닉네임',
-        rating: form.rating,
-        content: form.content,
-        imageUrls: form.imageUrls,
-        createdAt: new Date().toISOString()
-      }
-      reviews.value.unshift(newReview)
-    }
-
+    const newReview = await productApi.createReview(product.value.id, {
+      rating: form.rating,
+      content: form.content,
+      imageUrls: form.imageUrls,
+    })
+    reviews.value.unshift(newReview)
+    canReview.value = false
     isWritingReview.value = false
   } catch (error) {
     console.error('Failed to submit review:', error)
@@ -309,17 +238,14 @@ const handleReviewSubmit = async (form: ReviewForm) => {
   }
 }
 
-const handleReviewEdit = (review: Review) => {
-  editingReviewId.value = review.id
-  isWritingReview.value = false
-}
-
 const handleReviewDelete = async (reviewId: number) => {
-  if (!confirm('리뷰를 삭제하시겠습니까?')) return
+  if (!product.value || !confirm('리뷰를 삭제하시겠습니까?')) return
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await productApi.deleteReview(product.value.id, reviewId)
     reviews.value = reviews.value.filter(r => r.id !== reviewId)
+    // 삭제 후 다시 작성 가능 여부 확인
+    canReview.value = await productApi.getReviewEligibility(product.value.id)
   } catch (error) {
     console.error('Failed to delete review:', error)
     alert('리뷰 삭제에 실패했습니다.')
@@ -328,7 +254,6 @@ const handleReviewDelete = async (reviewId: number) => {
 
 const cancelReviewForm = () => {
   isWritingReview.value = false
-  editingReviewId.value = null
 }
 
 // Cart Actions
@@ -346,7 +271,7 @@ const addToCart = async () => {
     stock: product.value.stock,
     status: product.value.status as 'ACTIVE' | 'SOLD_OUT',
     productType: product.value.productType,
-    thumbnailUrl: product.value.thumbnailUrl,
+    thumbnailUrl: product.value.images.find(i => i.representative)?.imageUrl ?? product.value.images[0]?.imageUrl ?? null,
     sellerNickName: product.value.sellerNickName,
     lowStockWarning: product.value.lowStockWarning
   }, quantity.value)
@@ -368,7 +293,7 @@ const buyNow = () => {
 
 const goToSellerProducts = () => {
   if (product.value) {
-    router.push(`/search?seller=${product.value.sellerId}`)
+    router.push(`/store/${product.value.sellerId}`)
   }
 }
 
@@ -425,7 +350,7 @@ watch(
         <div class="lg:w-[55%]">
           <ProductImageGallery
               v-if="product"
-              :image-urls="product.imageUrls"
+              :image-urls="product.images.map(i => i.imageUrl)"
               :status="product.status"
               :product-name="product.name"
           />
@@ -720,17 +645,20 @@ watch(
           <!-- Write Review Button -->
           <div class="flex justify-end mb-4">
             <button
-                v-show="isLoggedIn && !myReview && !isWritingReview"
+                v-if="canReview && !isWritingReview"
                 @click="isWritingReview = true"
                 class="px-6 py-2 bg-sky-500 text-white font-semibold rounded-full hover:bg-sky-600 transition-colors"
             >
               리뷰 작성
             </button>
+            <p v-else-if="isLoggedIn && !canReview && !myReview" class="text-sm text-slate-400">
+              구매확정 후 리뷰를 작성할 수 있어요
+            </p>
           </div>
 
           <!-- Review Write Form -->
           <ReviewWriteForm
-              v-show="isWritingReview"
+              v-if="isWritingReview"
               :is-submitting="isSubmittingReview"
               @submit="handleReviewSubmit"
               @cancel="cancelReviewForm"
@@ -738,25 +666,13 @@ watch(
 
           <!-- Review List -->
           <div class="space-y-0">
-            <template v-for="review in reviews" :key="review.id">
-              <!-- Edit Form -->
-              <ReviewWriteForm
-                  v-if="editingReviewId === review.id"
-                  :initial-data="{ rating: review.rating, content: review.content, imageUrls: review.imageUrls }"
-                  :is-editing="true"
-                  :is-submitting="isSubmittingReview"
-                  @submit="handleReviewSubmit"
-                  @cancel="cancelReviewForm"
-              />
-              <!-- Review Card -->
-              <ReviewCard
-                  v-else
-                  :review="review"
-                  :current-user-id="currentUserId"
-                  @edit="handleReviewEdit"
-                  @delete="handleReviewDelete"
-              />
-            </template>
+            <ReviewCard
+                v-for="review in reviews"
+                :key="review.id"
+                :review="review"
+                :current-user-id="currentUserId"
+                @delete="handleReviewDelete"
+            />
           </div>
 
           <!-- Load More -->

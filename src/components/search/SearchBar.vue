@@ -28,12 +28,14 @@ const fetchAutocomplete = async (keyword: string) => {
     autocompleteList.value = []
     return
   }
-  
+
   isLoadingAutocomplete.value = true
   try {
     const response = await fetch(`/api/search/autocomplete?keyword=${encodeURIComponent(keyword)}`)
     if (response.ok) {
-      autocompleteList.value = await response.json()
+      const json = await response.json()
+      const names: string[] = json.data ?? json
+      autocompleteList.value = names.map(name => ({ keyword: name }))
     }
   } catch (error) {
     console.error('Autocomplete error:', error)
@@ -49,7 +51,8 @@ const fetchPopularKeywords = async () => {
   try {
     const response = await fetch('/api/search/popular')
     if (response.ok) {
-      popularKeywords.value = await response.json()
+      const json = await response.json()
+      popularKeywords.value = json.data ?? json
     }
   } catch (error) {
     console.error('Popular keywords error:', error)
@@ -96,9 +99,14 @@ const handleBlur = () => {
 }
 
 const highlightMatch = (text: string, keyword: string): string => {
+  if (!text) return ''
   if (!keyword) return text
-  const regex = new RegExp(`(${keyword})`, 'gi')
-  return text.replace(regex, '<span class="font-bold text-sky-600">$1</span>')
+  try {
+    const regex = new RegExp(`(${keyword})`, 'gi')
+    return text.replace(regex, '<span class="font-bold text-sky-600">$1</span>')
+  } catch {
+    return text
+  }
 }
 
 watch(() => props.modelValue, (newVal) => {

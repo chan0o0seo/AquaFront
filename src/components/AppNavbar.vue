@@ -1,34 +1,34 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Menu, X, ShoppingCart, Fish, User, Store } from 'lucide-vue-next'
-import { useSellerMode } from '@/composables/useSellerMode'
+import { Menu, X, ShoppingCart, Fish, User, Store, Search } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
-const { isSeller, isEligible, setSellerMode, setUserRole } = useSellerMode()
+const authStore = useAuthStore()
+const { isLoggedIn, isSeller, isAdmin } = storeToRefs(authStore)
 const cartStore = useCartStore()
 const { cartItems } = storeToRefs(cartStore)
 
-// For demo: simulate logged in seller
-onMounted(() => {
-  // Simulate a user with seller role for testing
-  setUserRole('SELLER')
-})
+const isSellerMode = ref(localStorage.getItem('aquahub_seller_mode') === 'true')
+
+const setSellerMode = (value: boolean) => {
+  isSellerMode.value = value
+  localStorage.setItem('aquahub_seller_mode', String(value))
+}
+
 const isScrolled = ref(false)
 const isMobileMenuOpen = ref(false)
 
 const navLinks = [
-  { name: '쇼핑몰', href: '/#shop' },
-  { name: '경매', href: '/#auction' },
-  { name: '브리더샵', href: '/#breeder' },
-  { name: '커뮤니티', href: '/#community' },
-  { name: '입점안내', href: '/#join' },
+  { name: '쇼핑몰', to: '/shop' },
+  { name: '스토어', to: '/stores' },
+  { name: '경매', to: '/auction' },
+  { name: '커뮤니티', to: '/community' },
 ]
-
-const isLoggedIn = ref(true) // For demo purposes
 
 // Handle seller mode toggle
 const handleBuyerMode = () => {
@@ -41,6 +41,11 @@ const handleBuyerMode = () => {
 const handleSellerMode = () => {
   setSellerMode(true)
   router.push('/mypage/seller')
+}
+
+const handleLogout = async () => {
+  await authStore.logout()
+  router.push('/login')
 }
 
 const handleScroll = () => {
@@ -70,36 +75,29 @@ onUnmounted(() => {
           <Fish class="w-7 h-7 text-sky-500" />
           <span class="text-xl font-bold text-sky-600">아쿠아 Hub</span>
         </RouterLink>
-        <!-- Seller Mode Badge -->
-        <span 
-          v-show="isSeller && isEligible" 
-          class="hidden md:inline-flex px-3 py-1 bg-amber-100 text-amber-600 text-xs rounded-full font-semibold"
-        >
-          판매자 모드
-        </span>
       </div>
 
       <!-- Desktop Navigation -->
       <div class="hidden md:flex items-center gap-8">
-        <a
+        <RouterLink
           v-for="link in navLinks"
           :key="link.name"
-          :href="link.href"
+          :to="link.to"
           class="text-slate-600 hover:text-sky-600 transition-colors duration-200 text-sm font-medium"
         >
           {{ link.name }}
-        </a>
+        </RouterLink>
       </div>
 
       <!-- Seller Mode Toggle -->
-      <div v-show="isEligible && isLoggedIn" class="hidden md:flex items-center">
+      <div v-show="isSeller && isLoggedIn && (route.path === '/mypage' || route.path === '/mypage/seller')" class="hidden md:flex items-center">
         <div class="bg-slate-100 rounded-full p-1 flex items-center gap-1 text-sm">
           <button
             @click="handleBuyerMode"
             class="px-4 py-1.5 rounded-full cursor-pointer transition-all duration-200 font-medium"
             :class="[
-              !isSeller 
-                ? 'bg-white text-slate-800 shadow-sm' 
+              !isSellerMode
+                ? 'bg-white text-slate-800 shadow-sm'
                 : 'text-slate-400 hover:text-slate-600'
             ]"
           >
@@ -110,8 +108,8 @@ onUnmounted(() => {
             @click="handleSellerMode"
             class="px-4 py-1.5 rounded-full cursor-pointer transition-all duration-200 font-medium"
             :class="[
-              isSeller 
-                ? 'bg-sky-500 text-white shadow-sm' 
+              isSellerMode
+                ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-600'
             ]"
           >
@@ -138,14 +136,28 @@ onUnmounted(() => {
           </RouterLink>
         </template>
         <template v-else>
-          <RouterLink 
-            to="/mypage" 
+          <RouterLink
+            :to="isAdmin ? '/admin' : isSeller ? '/mypage/seller' : '/mypage'"
+            @click="setSellerMode(true)"
             class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:text-sky-600 transition-colors"
           >
             <User class="w-4 h-4" />
-            마이페이지
+            {{ isAdmin ? '관리자 센터' : isSeller ? '판매자 센터' : '마이페이지' }}
           </RouterLink>
+          <button
+            @click="handleLogout"
+            class="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            로그아웃
+          </button>
         </template>
+        <button
+          @click="router.push('/shop')"
+          class="p-2 text-slate-600 hover:text-sky-600 transition-colors"
+          aria-label="검색"
+        >
+          <Search class="w-5 h-5" />
+        </button>
         <RouterLink to="/cart" class="relative p-2 text-slate-600 hover:text-sky-600 transition-colors">
           <ShoppingCart class="w-5 h-5" />
           <span 
@@ -173,15 +185,15 @@ onUnmounted(() => {
       class="md:hidden bg-white border-t border-slate-100 shadow-lg"
     >
       <div class="px-6 py-4 space-y-3">
-        <a
+        <RouterLink
           v-for="link in navLinks"
           :key="link.name"
-          :href="link.href"
+          :to="link.to"
           class="block py-2 text-slate-600 hover:text-sky-600 transition-colors font-medium"
           @click="isMobileMenuOpen = false"
         >
           {{ link.name }}
-        </a>
+        </RouterLink>
         <div class="pt-4 border-t border-slate-100 space-y-3">
           <template v-if="!isLoggedIn">
             <RouterLink 
@@ -200,12 +212,12 @@ onUnmounted(() => {
             </RouterLink>
           </template>
           <template v-else>
-            <RouterLink 
-              to="/mypage" 
+            <RouterLink
+              :to="isAdmin ? '/admin' : isSeller ? '/mypage/seller' : '/mypage'"
               class="block w-full py-2 text-sm font-medium text-slate-700 hover:text-sky-600 transition-colors text-center"
               @click="isMobileMenuOpen = false"
             >
-              마이페이지
+              {{ isAdmin ? '관리자 센터' : isSeller ? '판매자 센터' : '마이페이지' }}
             </RouterLink>
           </template>
         </div>

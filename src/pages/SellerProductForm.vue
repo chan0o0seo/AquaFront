@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft, X, Loader2 } from 'lucide-vue-next'
 import ProductTypeSelector from '@/components/seller/ProductTypeSelector.vue'
 import ProductImageUploader from '@/components/seller/ProductImageUploader.vue'
 import BioSpecsSection from '@/components/seller/BioSpecsSection.vue'
 import TagInput from '@/components/seller/TagInput.vue'
 import ProductFormFooter from '@/components/seller/ProductFormFooter.vue'
+import { sellerApi, productApi, uploadFiles } from '@/api'
 
 type ProductType = 'FISH' | 'INVERTEBRATE' | 'PLANT' | 'EQUIPMENT' | 'FOOD' | 'ACCESSORY'
 
@@ -23,9 +24,9 @@ const form = reactive({
   price: null as number | null,
   stock: null as number | null,
   description: '',
-  categoryId: null as number | null,
+  parentCategoryName: '',
+  categoryName: '',
   shippingFee: 0,
-  deliveryDays: null as number | null,
   productType: null as ProductType | null,
   brand: '',
   // Bio specs
@@ -39,8 +40,18 @@ const form = reactive({
   minimumTankSize: null as number | null
 })
 
-// Images
+// 수정 모드: 서버에 이미 올라간 기존 이미지 URL 목록
+const existingImageUrls = ref<string[]>([])
+
+// 새로 추가할 File 목록
 const images = ref<File[]>([])
+
+// 현재 슬롯 잔여 수 (기존 + 새 파일 합산)
+const remainingSlots = computed(() => 3 - existingImageUrls.value.length - images.value.length)
+
+const removeExistingImage = (index: number) => {
+  existingImageUrls.value.splice(index, 1)
+}
 
 // Tags
 const tags = ref<string[]>([])
@@ -48,11 +59,47 @@ const tags = ref<string[]>([])
 // Free shipping toggle
 const freeShipping = ref(false)
 
-// Submission state
+// Submission/loading state
 const isSubmitting = ref(false)
+const isLoadingProduct = ref(false)
 
-// Delivery days options
-const deliveryDaysOptions = [1, 2, 3, 5, 7]
+// 수정 모드 진입 시 기존 상품 데이터 로드
+onMounted(async () => {
+  if (!isEditMode.value || !productId.value) return
+  isLoadingProduct.value = true
+  try {
+    const p = await productApi.getDetail(Number(productId.value))
+    form.name = p.name
+    form.price = p.price
+    form.stock = p.stock
+    form.description = p.description ?? ''
+    form.shippingFee = p.shippingFee
+    form.productType = p.productType as ProductType
+    form.brand = p.brand ?? ''
+    form.waterType = p.waterType ?? null
+    form.difficulty = p.difficulty ?? null
+    form.waterTemperatureMin = p.waterTemperatureMin ?? null
+    form.waterTemperatureMax = p.waterTemperatureMax ?? null
+    form.phMin = p.phMin ?? null
+    form.phMax = p.phMax ?? null
+    form.isCompatible = p.isCompatible ?? null
+    form.minimumTankSize = p.minimumTankSize ?? null
+    // 카테고리: parentCategoryName이 있으면 2단계, 없으면 1단계
+    form.parentCategoryName = (p as any).parentCategoryName ?? ''
+    form.categoryName = p.categoryName ?? ''
+    // 기존 이미지 URL
+    existingImageUrls.value = p.images.map(img => img.imageUrl)
+    // 배송비 0 → 무료배송 체크
+    freeShipping.value = p.shippingFee === 0
+    // 태그
+    tags.value = p.tags ?? []
+  } catch {
+    alert('상품 정보를 불러오는 데 실패했습니다.')
+    router.push('/mypage/seller')
+  } finally {
+    isLoadingProduct.value = false
+  }
+})
 
 // Bio specs model
 const bioSpecs = computed({
@@ -94,7 +141,6 @@ const isFormValid = computed(() => {
     form.name.trim().length > 0 &&
     form.price !== null && form.price >= 0 &&
     form.stock !== null && form.stock >= 0 &&
-    form.deliveryDays !== null && form.deliveryDays >= 1 &&
     form.productType !== null
   )
 })
@@ -111,71 +157,51 @@ const handleFreeShippingChange = () => {
   }
 }
 
-// Handle delivery days selection
-const selectDeliveryDays = (days: number) => {
-  form.deliveryDays = days
-}
-
 // Submit handler
 const handleSubmit = async () => {
   if (!isFormValid.value || isSubmitting.value) return
-  
+
   isSubmitting.value = true
-  
+
   try {
-    const formData = new FormData()
-    
-    // Append basic fields
-    formData.append('name', form.name)
-    formData.append('price', String(form.price))
-    formData.append('stock', String(form.stock))
-    formData.append('description', form.description)
-    formData.append('productType', form.productType!)
-    formData.append('shippingFee', String(form.shippingFee))
-    formData.append('deliveryDays', String(form.deliveryDays))
-    
-    if (form.categoryId) {
-      formData.append('categoryId', String(form.categoryId))
+    // 1. 새 파일 S3 업로드 후 URL 취득, 기존 URL과 합산
+    const newUrls = images.value.length > 0 ? await uploadFiles(images.value) : []
+    const imageUrls = [...existingImageUrls.value, ...newUrls]
+
+    // 2. Build request body
+    const body = {
+      name: form.name,
+      price: form.price!,
+      stock: form.stock!,
+      description: form.description || undefined,
+      parentCategoryName: form.parentCategoryName.trim() || undefined,
+      categoryName: form.categoryName.trim() || undefined,
+      productType: form.productType!,
+      shippingFee: form.shippingFee,
+      imageUrls,
+      tags: tags.value.length > 0 ? tags.value : undefined,
+      brand: form.brand || undefined,
+      ...(isBioType.value && {
+        waterType: form.waterType ?? undefined,
+        difficulty: form.difficulty ?? undefined,
+        waterTemperatureMin: form.waterTemperatureMin ?? undefined,
+        waterTemperatureMax: form.waterTemperatureMax ?? undefined,
+        phMin: form.phMin ?? undefined,
+        phMax: form.phMax ?? undefined,
+        minimumTankSize: form.minimumTankSize ?? undefined,
+      }),
     }
-    
-    if (form.brand) {
-      formData.append('brand', form.brand)
+
+    // 3. Create or update
+    if (isEditMode.value && productId.value) {
+      await sellerApi.updateProduct(Number(productId.value), body)
+    } else {
+      await sellerApi.createProduct(body)
     }
-    
-    // Append bio specs if applicable
-    if (isBioType.value) {
-      if (form.waterType) formData.append('waterType', form.waterType)
-      if (form.difficulty) formData.append('difficulty', form.difficulty)
-      if (form.waterTemperatureMin !== null) formData.append('waterTemperatureMin', String(form.waterTemperatureMin))
-      if (form.waterTemperatureMax !== null) formData.append('waterTemperatureMax', String(form.waterTemperatureMax))
-      if (form.phMin !== null) formData.append('phMin', String(form.phMin))
-      if (form.phMax !== null) formData.append('phMax', String(form.phMax))
-      if (form.isCompatible !== null) formData.append('isCompatible', String(form.isCompatible))
-      if (form.minimumTankSize !== null) formData.append('minimumTankSize', String(form.minimumTankSize))
-    }
-    
-    // Append tags
-    tags.value.forEach((tag, index) => {
-      formData.append(`tags[${index}]`, tag)
-    })
-    
-    // Append images
-    images.value.forEach((file, index) => {
-      formData.append(`images`, file)
-    })
-    
-    // Simulated API call
-    // const endpoint = isEditMode.value 
-    //   ? `/api/products/${productId.value}` 
-    //   : '/api/products'
-    // const method = isEditMode.value ? 'PATCH' : 'POST'
-    // await fetch(endpoint, { method, body: formData })
-    
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
+
     router.push('/mypage/seller')
   } catch (e) {
-    alert('상품 등록에 실패했습니다. 다시 시도해주세요.')
+    alert(isEditMode.value ? '상품 수정에 실패했습니다. 다시 시도해주세요.' : '상품 등록에 실패했습니다. 다시 시도해주세요.')
   } finally {
     isSubmitting.value = false
   }
@@ -211,8 +237,14 @@ const goBack = () => {
         판매자 센터
       </button>
 
+      <!-- 로딩 -->
+      <div v-if="isLoadingProduct" class="flex flex-col items-center justify-center py-32 bg-white rounded-2xl border border-sky-100">
+        <Loader2 class="w-8 h-8 animate-spin text-sky-400 mb-3" />
+        <p class="text-slate-400 text-sm">상품 정보를 불러오는 중...</p>
+      </div>
+
       <!-- Main Card -->
-      <div class="bg-white rounded-2xl shadow-sm border border-sky-100 p-6">
+      <div v-else class="bg-white rounded-2xl shadow-sm border border-sky-100 p-6">
         <!-- Header -->
         <h1 class="text-3xl font-black text-slate-900">
           {{ isEditMode ? '상품 수정' : '상품 등록' }}
@@ -249,22 +281,37 @@ const goBack = () => {
             </div>
           </div>
           
-          <!-- Category (placeholder) -->
+          <!-- Category -->
           <div class="mt-5">
-            <label class="block text-sm font-semibold text-slate-700 mb-2">카테고리</label>
-            <select
-              v-model="form.categoryId"
-              class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800
-                     focus:outline-none focus:ring-2 focus:ring-sky-400
-                     focus:border-transparent transition-all duration-150"
-            >
-              <option :value="null">카테고리 선택</option>
-              <option :value="1">열대어 &gt; 구피</option>
-              <option :value="2">열대어 &gt; 베타</option>
-              <option :value="3">새우 &gt; 체리새우</option>
-              <option :value="4">수초 &gt; 음성수초</option>
-              <option :value="5">용품 &gt; 여과기</option>
-            </select>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">카테고리 <span class="text-slate-400 font-normal">(선택)</span></label>
+            <div class="flex items-center gap-2">
+              <input
+                v-model="form.parentCategoryName"
+                type="text"
+                maxlength="30"
+                placeholder="대분류 예: 열대어"
+                class="flex-1 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800
+                       placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
+                       focus:border-transparent transition-all duration-150"
+              />
+              <span class="text-slate-300 text-lg font-light flex-shrink-0">/</span>
+              <input
+                v-model="form.categoryName"
+                type="text"
+                maxlength="30"
+                :placeholder="form.parentCategoryName ? '소분류 예: 구피' : '소분류 (대분류 입력 후)'"
+                :disabled="!form.parentCategoryName.trim()"
+                class="flex-1 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800
+                       placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
+                       focus:border-transparent transition-all duration-150
+                       disabled:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+              />
+            </div>
+            <!-- 미리보기 -->
+            <p v-if="form.parentCategoryName.trim()" class="text-xs text-sky-500 mt-1.5 font-medium">
+              {{ form.parentCategoryName.trim() }}{{ form.categoryName.trim() ? ` > ${form.categoryName.trim()}` : '' }}
+            </p>
+            <p v-else class="text-xs text-slate-400 mt-1.5">대분류만 입력하거나 소분류까지 세분화할 수 있어요</p>
           </div>
           
           <!-- Description -->
@@ -289,8 +336,42 @@ const goBack = () => {
 
         <!-- SECTION 2: Images -->
         <div class="mt-4 bg-white rounded-2xl border border-sky-100 p-6">
-          <h2 class="text-lg font-bold text-slate-800 mb-5">이미지 등록</h2>
-          <ProductImageUploader v-model="images" :max-images="3" />
+          <h2 class="text-lg font-bold text-slate-800 mb-5">
+            이미지 등록
+            <span class="text-sm font-normal text-slate-400 ml-1">(최대 3장)</span>
+          </h2>
+
+          <!-- 기존 이미지 (수정 모드) -->
+          <div v-if="existingImageUrls.length > 0" class="mb-4">
+            <p class="text-xs text-slate-400 mb-2">등록된 이미지 — X를 눌러 삭제할 수 있어요</p>
+            <div class="grid grid-cols-3 gap-4">
+              <div
+                v-for="(url, i) in existingImageUrls"
+                :key="url"
+                class="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-200"
+              >
+                <img :src="url" :alt="`기존 이미지 ${i + 1}`" class="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  @click="removeExistingImage(i)"
+                  class="absolute top-2 right-2 p-1 bg-white rounded-full shadow-sm hover:bg-red-50 transition-colors"
+                >
+                  <X class="w-4 h-4 text-slate-500 hover:text-red-500" />
+                </button>
+                <div v-if="i === 0" class="absolute bottom-2 left-2 px-2 py-1 bg-sky-500 text-white text-xs rounded-lg font-medium">
+                  썸네일
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 새 이미지 업로더 (남은 슬롯만큼만) -->
+          <ProductImageUploader
+            v-if="remainingSlots > 0"
+            v-model="images"
+            :max-images="remainingSlots"
+          />
+          <p v-else class="text-xs text-slate-400 mt-1">이미지 3장이 모두 등록되었습니다.</p>
         </div>
 
         <!-- SECTION 3: Price & Stock -->
@@ -370,37 +451,6 @@ const goBack = () => {
             </div>
           </div>
           
-          <!-- Delivery Days -->
-          <div class="mt-5">
-            <label class="block text-sm font-semibold text-slate-700 mb-2">
-              배송 예정일 <span class="text-red-500">*</span>
-            </label>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="days in deliveryDaysOptions"
-                :key="days"
-                type="button"
-                @click="selectDeliveryDays(days)"
-                class="px-4 py-2 rounded-full border text-sm font-medium transition-all duration-150"
-                :class="[
-                  form.deliveryDays === days
-                    ? 'border-sky-400 bg-sky-50 text-sky-600'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                ]"
-              >
-                {{ days }}일
-              </button>
-              <input
-                v-model.number="form.deliveryDays"
-                type="number"
-                min="1"
-                placeholder="직접 입력"
-                class="w-24 px-3 py-2 rounded-full border border-sky-100 bg-white text-slate-800 text-center
-                       placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
-                       focus:border-transparent transition-all duration-150"
-              />
-            </div>
-          </div>
         </div>
 
         <!-- SECTION 4: Bio Specs (conditional) -->

@@ -3,6 +3,7 @@ import { ref, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Fish, Eye, EyeOff, Check, X, Loader2 } from 'lucide-vue-next'
 import { useDebouncedFn } from '../composables/useDebounce'
+import { authApi } from '@/api'
 
 const router = useRouter()
 
@@ -24,10 +25,11 @@ const showPassword = ref(false)
 const showPasswordConfirm = ref(false)
 
 // Step 2: Additional info
+const name = ref('')
 const nickname = ref('')
 const nicknameStatus = ref<'idle' | 'checking' | 'available' | 'taken'>('idle')
 const phone = ref('')
-const memberType = ref<'buyer' | 'seller' | 'breeder' | null>(null)
+const memberType = ref<'BUYER' | 'SELLER' | 'BREEDER' | null>(null)
 const referralCode = ref('')
 
 // Step 3: Interests
@@ -44,29 +46,34 @@ const interestTags = [
 ]
 
 const memberTypes = [
-  { value: 'buyer', icon: '🐠', label: '일반 구매자', description: '생물과 용품을 구매하고 싶어요' },
-  { value: 'seller', icon: '🏪', label: '수족관 운영자', description: '입점하여 판매하고 싶어요' },
-  { value: 'breeder', icon: '🔬', label: '홈 브리더', description: '직접 키운 개체를 경매하고 싶어요' },
+  { value: 'BUYER', icon: '🐠', label: '일반 구매자', description: '생물과 용품을 구매하고 싶어요' },
+  { value: 'SELLER', icon: '🏪', label: '수족관 운영자', description: '입점하여 판매하고 싶어요' },
+  { value: 'BREEDER', icon: '🔬', label: '홈 브리더', description: '직접 키운 개체를 경매하고 싶어요' },
 ]
 
-// Password strength
-const passwordStrength = computed(() => {
-  const pwd = password.value
-  if (!pwd) return 0
-  let score = 0
-  if (pwd.length >= 8) score++
-  if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++
-  if (/\d/.test(pwd)) score++
-  if (/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) score++
-  return score
-})
+// Password requirements
+const passwordReqs = computed(() => ({
+  length:    password.value.length >= 8,
+  uppercase: /[A-Z]/.test(password.value),
+  special:   /[!@#$%^&*(),.?":{}|<>]/.test(password.value),
+}))
 
-const strengthLabel = computed(() => {
-  const labels = ['', '약함', '보통', '강함', '매우 강함']
-  return labels[passwordStrength.value]
-})
+const passwordValid = computed(() => Object.values(passwordReqs.value).every(Boolean))
 
-const strengthColors = ['bg-slate-200', 'bg-red-400', 'bg-amber-400', 'bg-sky-400', 'bg-emerald-500']
+// Phone formatter
+function formatPhoneInput(e: Event) {
+  const digits = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length > 7) {
+    phone.value = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+  } else if (digits.length > 3) {
+    phone.value = `${digits.slice(0, 3)}-${digits.slice(3)}`
+  } else {
+    phone.value = digits
+  }
+}
+
+const phoneDigits = computed(() => phone.value.replace(/\D/g, ''))
+const phoneValid = computed(() => /^01\d-\d{3,4}-\d{4}$/.test(phone.value))
 
 // Password match
 const passwordsMatch = computed(() => {
@@ -85,42 +92,73 @@ const formatTimer = computed(() => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
-const sendEmailVerification = () => {
-  emailSent.value = true
-  emailTimer.value = 179 // 2:59
+const emailSending = ref(false)
+const emailError = ref('')
+const verifyError = ref('')
+
+const startTimer = () => {
+  emailTimer.value = 300
+  if (emailTimerInterval) clearInterval(emailTimerInterval)
   emailTimerInterval = setInterval(() => {
-    emailTimer.value--
-    if (emailTimer.value <= 0) {
-      if (emailTimerInterval) clearInterval(emailTimerInterval)
+    if (emailTimer.value > 0) {
+      emailTimer.value--
+    } else {
+      clearInterval(emailTimerInterval!)
       emailSent.value = false
     }
   }, 1000)
 }
 
-const verifyEmailCode = () => {
-  if (emailCode.value.length === 6) {
+const sendEmailVerification = async () => {
+  if (emailSending.value) return
+  emailSending.value = true
+  emailError.value = ''
+  try {
+    await authApi.sendVerificationEmail({ email: email.value })
+    emailSent.value = true
+    startTimer()
+  } catch (e: any) {
+    emailError.value = e?.response?.data?.message ?? '인증 메일 발송에 실패했습니다.'
+  } finally {
+    emailSending.value = false
+  }
+}
+
+const verifyEmailCode = async () => {
+  if (emailCode.value.length !== 6) return
+  verifyError.value = ''
+  try {
+    await authApi.verifyEmail({ email: email.value, code: emailCode.value })
     emailVerified.value = true
     if (emailTimerInterval) clearInterval(emailTimerInterval)
+  } catch (e: any) {
+    verifyError.value = e?.response?.data?.message ?? '인증 코드가 올바르지 않습니다.'
   }
 }
 
 // Nickname check
+let nicknameAbortController: AbortController | null = null
+
 const checkNickname = useDebouncedFn(async () => {
-  if (!nickname.value) {
-    nicknameStatus.value = 'idle'
-    return
+  if (!nickname.value) return
+
+  if (nicknameAbortController) nicknameAbortController.abort()
+  nicknameAbortController = new AbortController()
+
+  try {
+    const isDuplicate = await authApi.checkNickname(nickname.value, nicknameAbortController.signal)
+    nicknameStatus.value = isDuplicate ? 'taken' : 'available'
+  } catch (e: any) {
+    if (e?.code !== 'ERR_CANCELED') nicknameStatus.value = 'idle'
   }
-  nicknameStatus.value = 'checking'
-  await new Promise(resolve => setTimeout(resolve, 800))
-  // Simulate: "test" is taken, others are available
-  nicknameStatus.value = nickname.value.toLowerCase() === 'test' ? 'taken' : 'available'
 }, 500)
 
-watch(nickname, () => {
-  if (nickname.value) {
+watch(nickname, (val) => {
+  if (val) {
     nicknameStatus.value = 'checking'
     checkNickname()
   } else {
+    nicknameAbortController?.abort()
     nicknameStatus.value = 'idle'
   }
 })
@@ -148,11 +186,11 @@ watch([agreeTerms, agreePrivacy, agreeMarketing], ([t, p, m]) => {
 
 // Step validation
 const step1Valid = computed(() => {
-  return email.value && emailVerified.value && password.value.length >= 8 && passwordsMatch.value
+  return email.value && emailVerified.value && passwordValid.value && passwordsMatch.value
 })
 
 const step2Valid = computed(() => {
-  return nickname.value && nicknameStatus.value === 'available' && memberType.value
+  return name.value && nickname.value && nicknameStatus.value === 'available' && phoneValid.value && memberType.value
 })
 
 const step3Valid = computed(() => {
@@ -172,9 +210,29 @@ const prevStep = () => {
   }
 }
 
-const submitRegistration = () => {
-  if (step3Valid.value) {
+const isSubmitting = ref(false)
+
+const submitRegistration = async () => {
+  if (!step3Valid.value || isSubmitting.value) return
+
+  isSubmitting.value = true
+  try {
+    await authApi.signup({
+      email: email.value,
+      password: password.value,
+      name: name.value,
+      nickName: nickname.value,
+      phoneNumber: phone.value,
+      termsAgreed: agreeTerms.value,
+      privacyAgreed: agreePrivacy.value,
+      marketingAgreed: agreeMarketing.value,
+      role: memberType.value!,
+    })
     router.push('/register/complete')
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '회원가입에 실패했습니다. 다시 시도해주세요.')
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -262,12 +320,13 @@ onUnmounted(() => {
                   />
                   <button
                     @click="sendEmailVerification"
-                    :disabled="!email || emailVerified"
+                    :disabled="!email || emailVerified || emailSending"
                     class="text-sm bg-sky-50 text-sky-600 border border-sky-200 rounded-lg px-3 py-2 hover:bg-sky-100 transition disabled:opacity-50 whitespace-nowrap"
                   >
-                    {{ emailVerified ? '인증완료' : '인증 메일 발송' }}
+                    {{ emailVerified ? '인증완료' : emailSent ? '재발송' : '인증 메일 발송' }}
                   </button>
                 </div>
+                <p v-if="emailError" class="mt-1 text-xs text-red-500">{{ emailError }}</p>
                 <div v-show="emailSent && !emailVerified" class="mt-2 text-amber-500 font-mono text-sm">
                   {{ formatTimer }}
                 </div>
@@ -282,6 +341,7 @@ onUnmounted(() => {
                     type="text"
                     maxlength="6"
                     placeholder="인증번호 6자리"
+                    @input="verifyError = ''"
                     class="flex-1 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all duration-150"
                   />
                   <button
@@ -292,6 +352,7 @@ onUnmounted(() => {
                     확인
                   </button>
                 </div>
+                <p v-if="verifyError" class="mt-1 text-xs text-red-500">{{ verifyError }}</p>
               </div>
 
               <!-- Verified State -->
@@ -319,19 +380,23 @@ onUnmounted(() => {
                     <EyeOff v-show="showPassword" class="w-5 h-5" />
                   </button>
                 </div>
-                <!-- Strength Meter -->
-                <div v-show="password" class="mt-2">
-                  <div class="flex gap-1 mb-1">
-                    <div
-                      v-for="i in 4"
-                      :key="i"
-                      class="h-1 flex-1 rounded-full transition-colors"
-                      :class="i <= passwordStrength ? strengthColors[passwordStrength] : 'bg-slate-200'"
-                    ></div>
+                <!-- Password Requirements -->
+                <div v-show="password" class="mt-2 space-y-1">
+                  <div class="flex items-center gap-1.5 text-xs" :class="passwordReqs.length ? 'text-emerald-500' : 'text-slate-400'">
+                    <Check v-if="passwordReqs.length" class="w-3.5 h-3.5" />
+                    <X v-else class="w-3.5 h-3.5 text-red-400" />
+                    8자 이상
                   </div>
-                  <span class="text-xs" :class="passwordStrength >= 3 ? 'text-emerald-500' : passwordStrength >= 2 ? 'text-amber-500' : 'text-red-500'">
-                    {{ strengthLabel }}
-                  </span>
+                  <div class="flex items-center gap-1.5 text-xs" :class="passwordReqs.uppercase ? 'text-emerald-500' : 'text-slate-400'">
+                    <Check v-if="passwordReqs.uppercase" class="w-3.5 h-3.5" />
+                    <X v-else class="w-3.5 h-3.5 text-red-400" />
+                    영문 대문자 포함
+                  </div>
+                  <div class="flex items-center gap-1.5 text-xs" :class="passwordReqs.special ? 'text-emerald-500' : 'text-slate-400'">
+                    <Check v-if="passwordReqs.special" class="w-3.5 h-3.5" />
+                    <X v-else class="w-3.5 h-3.5 text-red-400" />
+                    특수문자 포함 (!@#$% 등)
+                  </div>
                 </div>
               </div>
 
@@ -379,6 +444,17 @@ onUnmounted(() => {
             <h2 class="text-2xl font-black text-slate-900 mb-6">추가 정보 입력</h2>
 
             <div class="space-y-4">
+              <!-- Name -->
+              <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">이름 (실명)</label>
+                <input
+                  v-model="name"
+                  type="text"
+                  placeholder="홍길동"
+                  class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all duration-150"
+                />
+              </div>
+
               <!-- Nickname -->
               <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-2">닉네임</label>
@@ -408,11 +484,22 @@ onUnmounted(() => {
               <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-2">휴대폰 번호</label>
                 <input
-                  v-model="phone"
+                  :value="phone"
+                  @input="formatPhoneInput"
                   type="tel"
+                  maxlength="13"
                   placeholder="010-0000-0000"
                   class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all duration-150"
                 />
+                <div v-if="phone" class="mt-1 flex items-center justify-between">
+                  <p v-if="!phoneValid" class="text-xs text-red-500">
+                    {{ phoneDigits.length < 10 ? `전화번호가 너무 짧습니다 (${phoneDigits.length}/11자리)` : '올바른 전화번호 형식이 아닙니다 (예: 010-1234-5678)' }}
+                  </p>
+                  <p v-else class="text-xs text-emerald-500 flex items-center gap-1">
+                    <Check class="w-3.5 h-3.5" />입력 완료
+                  </p>
+                  <span class="text-xs text-slate-400 ml-auto">{{ phoneDigits.length }}/11</span>
+                </div>
               </div>
 
               <!-- Member Type -->
@@ -422,7 +509,7 @@ onUnmounted(() => {
                   <button
                     v-for="type in memberTypes"
                     :key="type.value"
-                    @click="memberType = type.value as 'buyer' | 'seller' | 'breeder'"
+                    @click="memberType = type.value as 'BUYER' | 'SELLER' | 'BREEDER'"
                     class="rounded-2xl border-2 p-4 cursor-pointer transition-all duration-150 text-left"
                     :class="memberType === type.value ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white hover:border-slate-300'"
                   >

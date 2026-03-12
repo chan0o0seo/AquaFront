@@ -2,8 +2,10 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Fish, Eye, EyeOff, AlertCircle } from 'lucide-vue-next'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const email = ref('')
 const password = ref('')
@@ -19,22 +21,19 @@ const isFormValid = computed(() => {
 
 const handleLogin = async () => {
   if (!isFormValid.value) return
-  
+
   isLoading.value = true
   hasError.value = false
-  
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 1500))
-  
-  // Simulate validation (for demo, any input will succeed)
-  if (email.value && password.value) {
-    router.push('/mypage')
-  } else {
+
+  try {
+    await authStore.login(email.value, password.value)
+    router.push('/')
+  } catch (err: any) {
     hasError.value = true
-    errorMessage.value = '이메일 또는 비밀번호가 올바르지 않습니다.'
+    errorMessage.value = err?.response?.data?.message ?? '이메일 또는 비밀번호가 올바르지 않습니다.'
+  } finally {
+    isLoading.value = false
   }
-  
-  isLoading.value = false
 }
 </script>
 

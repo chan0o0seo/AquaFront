@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { productApi } from '@/api'
 
 export interface CartItem {
     productId: number
@@ -117,6 +118,31 @@ export const useCartStore = defineStore('cart', () => {
         cartItems.value = cartItems.value.filter(item => !item.isChecked)
     }
 
+    // 장바구니 항목의 상태/재고를 서버에서 최신화
+    async function syncCartItems() {
+        if (cartItems.value.length === 0) return
+
+        const results = await Promise.all(
+            cartItems.value.map(item =>
+                productApi.getDetail(item.productId).catch(() => null)
+            )
+        )
+
+        const updated: CartItem[] = []
+        for (let i = 0; i < cartItems.value.length; i++) {
+            const item = cartItems.value[i]
+            const fresh = results[i]
+            if (!fresh) continue // 삭제된 상품 → 카트에서 제거
+            item.status = fresh.status
+            item.stock = fresh.stock
+            item.price = fresh.price
+            if (fresh.status !== 'ACTIVE') item.isChecked = false
+            if (item.quantity > fresh.stock && fresh.stock > 0) item.quantity = fresh.stock
+            updated.push(item)
+        }
+        cartItems.value = updated
+    }
+
     function setAllChecked(value: boolean) {
         cartItems.value.forEach(item => {
             if (item.status === 'ACTIVE') {
@@ -144,6 +170,7 @@ export const useCartStore = defineStore('cart', () => {
         toggleCheck,
         clearCart,
         clearChecked,
-        setAllChecked
+        setAllChecked,
+        syncCartItems
     }
-})
+}, { persist: true })

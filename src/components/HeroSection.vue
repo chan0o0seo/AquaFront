@@ -1,4 +1,16 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { Search } from 'lucide-vue-next'
+
+const router = useRouter()
+const searchInput = ref('')
+
+const handleSearch = () => {
+  const q = searchInput.value.trim()
+  router.push(q ? `/shop?keyword=${encodeURIComponent(q)}` : '/shop')
+}
+
 const stats = [
   { label: '입점 수족관', value: '200+' },
   { label: '등록 생물', value: '15,000+' },
@@ -47,16 +59,41 @@ const floatingCards = [
 
           <!-- Subtext -->
           <p class="text-lg text-slate-500 max-w-md leading-relaxed">
-            전국 수족관과 브리더의 물생활 생물·용품을 한 곳에서. 
+            전국 수족관과 브리더의 물생활 생물·용품을 한 곳에서.
             실시간 경매로 가치있는 개체를 공정하게.
           </p>
 
+          <!-- Search Bar -->
+          <form @submit.prevent="handleSearch" class="flex items-center gap-2 max-w-md">
+            <div class="flex-1 flex items-center gap-3 bg-white border border-sky-100 rounded-full px-5 py-3 shadow-sm focus-within:ring-2 focus-within:ring-sky-400 focus-within:border-transparent transition-all">
+              <Search class="w-4 h-4 text-slate-400 flex-shrink-0" />
+              <input
+                v-model="searchInput"
+                type="text"
+                placeholder="구피, 플레코, ADA 소일..."
+                class="flex-1 text-sm text-slate-800 placeholder-slate-400 outline-none bg-transparent"
+              />
+            </div>
+            <button
+              type="submit"
+              class="px-5 py-3 bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold rounded-full transition-colors shadow-sm flex-shrink-0"
+            >
+              검색
+            </button>
+          </form>
+
           <!-- CTA Buttons -->
-          <div class="flex flex-col sm:flex-row gap-4 pt-4">
-            <button class="px-8 py-4 bg-sky-500 text-white font-semibold rounded-full hover:bg-sky-600 transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
+          <div class="flex flex-col sm:flex-row gap-4 pt-2">
+            <button
+              @click="router.push('/shop')"
+              class="px-8 py-4 bg-sky-500 text-white font-semibold rounded-full hover:bg-sky-600 transition-all duration-200 hover:shadow-lg hover:scale-[1.02]"
+            >
               쇼핑 시작하기
             </button>
-            <button class="px-8 py-4 border border-slate-300 text-slate-700 font-semibold rounded-full hover:border-sky-500 hover:text-sky-600 transition-all duration-200">
+            <button
+              @click="router.push('/auction')"
+              class="px-8 py-4 border border-slate-300 text-slate-700 font-semibold rounded-full hover:border-sky-500 hover:text-sky-600 transition-all duration-200"
+            >
               경매 참여하기
             </button>
           </div>
