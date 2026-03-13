@@ -1,26 +1,63 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard, Package, Plus, Gavel, TrendingUp,
-  Bell, Settings, ChevronRight, Edit, Loader2
+  Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy
 } from 'lucide-vue-next'
 import SellerStatsGrid from '@/components/seller/SellerStatsGrid.vue'
 import SellerProductList from '@/components/seller/SellerProductList.vue'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-import { sellerApi, getThumbnailUrl, type SellerStats, type ProductDetail } from '@/api'
+import { sellerApi, auctionApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
 
 const router = useRouter()
+const route = useRoute()
 const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
-const activeTab = ref<'home' | 'products'>('home')
+const activeTab = ref<'home' | 'products' | 'auctions'>('home')
+
+// 내 경매 목록
+const myAuctions = ref<AuctionResponse[]>([])
+const isLoadingAuctions = ref(false)
+const isCancelling = ref<number | null>(null)
+
+async function loadMyAuctions(force = false) {
+  if (!force && myAuctions.value.length > 0) return
+  isLoadingAuctions.value = true
+  try {
+    myAuctions.value = await auctionApi.getSellerAuctions()
+  } finally {
+    isLoadingAuctions.value = false
+  }
+}
+
+async function cancelAuction(auctionId: number) {
+  if (!confirm('경매를 취소하시겠습니까? 시작 전 경매만 취소할 수 있습니다.')) return
+  isCancelling.value = auctionId
+  try {
+    await auctionApi.cancelAuction(auctionId)
+    myAuctions.value = myAuctions.value.filter(a => a.id !== auctionId)
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '취소에 실패했습니다.')
+  } finally {
+    isCancelling.value = null
+  }
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 const stats = ref<SellerStats | null>(null)
 const recentProducts = ref<ProductDetail[]>([])
 const isLoadingHome = ref(false)
 
 onMounted(async () => {
+  if (route.query.tab === 'auctions') {
+    activeTab.value = 'auctions'
+    loadMyAuctions(true)
+  }
   isLoadingHome.value = true
   try {
     await fetchProfile()
@@ -52,6 +89,7 @@ const statusText = (status: string) => {
 const navItems = [
   { key: 'home',     icon: LayoutDashboard, label: '판매자 홈' },
   { key: 'products', icon: Package,         label: '내 상품 관리' },
+  { key: 'auctions', icon: Gavel,           label: '내 경매 관리' },
 ]
 
 const goToNewProduct = () => router.push('/seller/products/new')
@@ -111,7 +149,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
               <button
                 v-for="item in navItems"
                 :key="item.key"
-                @click="activeTab = item.key as 'home' | 'products'"
+                @click="activeTab = item.key as 'home' | 'products' | 'auctions'; if (item.key === 'auctions') loadMyAuctions()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer
                        transition-colors duration-150 text-left"
                 :class="activeTab === item.key
@@ -134,9 +172,9 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                 상품 등록
               </button>
               <button
+                @click="activeTab = 'auctions'; loadMyAuctions()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left
-                       text-slate-400 cursor-not-allowed opacity-60"
-                disabled
+                       text-slate-600 hover:bg-sky-50 hover:text-sky-600 transition-colors"
               >
                 <Gavel class="w-5 h-5" />
                 경매 관리
@@ -273,6 +311,136 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
           <!-- ── TAB: 내 상품 관리 ── -->
           <div v-show="activeTab === 'products'">
             <SellerProductList />
+          </div>
+
+          <!-- ── TAB: 내 경매 관리 ── -->
+          <div v-show="activeTab === 'auctions'">
+            <div class="flex items-center justify-between mb-6">
+              <h1 class="text-3xl font-black text-slate-900">내 경매 관리</h1>
+              <button
+                @click="router.push('/seller/auctions/new')"
+                class="flex items-center gap-2 bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold px-5 py-2.5 rounded-full transition-colors"
+              >
+                <Plus class="w-4 h-4" />
+                경매 등록
+              </button>
+            </div>
+
+            <!-- 로딩 -->
+            <div v-if="isLoadingAuctions" class="flex justify-center py-16">
+              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+            </div>
+
+            <template v-else>
+              <!-- 요약 -->
+              <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
+                  <div class="text-2xl font-black text-red-500">{{ myAuctions.filter(a => a.status === 'ACTIVE').length }}</div>
+                  <div class="text-xs text-slate-400 mt-0.5">진행 중</div>
+                </div>
+                <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
+                  <div class="text-2xl font-black text-sky-500">{{ myAuctions.filter(a => a.status === 'SCHEDULED').length }}</div>
+                  <div class="text-xs text-slate-400 mt-0.5">예정</div>
+                </div>
+                <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
+                  <div class="text-2xl font-black text-slate-500">{{ myAuctions.filter(a => a.status === 'ENDED').length }}</div>
+                  <div class="text-xs text-slate-400 mt-0.5">종료</div>
+                </div>
+              </div>
+
+              <!-- 빈 상태 -->
+              <div v-if="myAuctions.length === 0" class="text-center py-20 bg-sky-50 rounded-2xl border border-sky-100">
+                <Gavel class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                <p class="text-slate-400 text-sm mb-4">등록한 경매가 없습니다</p>
+                <button
+                  @click="router.push('/seller/auctions/new')"
+                  class="px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold rounded-full transition-colors"
+                >
+                  첫 경매 등록하기
+                </button>
+              </div>
+
+              <!-- 경매 목록 -->
+              <div v-else class="space-y-3">
+                <div
+                  v-for="auction in myAuctions"
+                  :key="auction.id"
+                  class="bg-white rounded-2xl border border-sky-100 p-5 transition-all hover:shadow-sm"
+                >
+                  <div class="flex items-center gap-4">
+                    <!-- 썸네일 -->
+                    <div class="w-16 h-16 rounded-xl overflow-hidden bg-gradient-to-br from-sky-100 to-teal-200 flex-shrink-0">
+                      <img
+                        v-if="auction.imageUrls.length > 0"
+                        :src="auction.imageUrls[0]"
+                        :alt="auction.productName"
+                        class="w-full h-full object-cover"
+                      />
+                      <div v-else class="w-full h-full flex items-center justify-center text-2xl">🐠</div>
+                    </div>
+
+                    <!-- 정보 -->
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 mb-1">
+                        <!-- 상태 배지 -->
+                        <span
+                          class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                          :class="{
+                            'bg-red-100 text-red-600 animate-pulse': auction.status === 'ACTIVE',
+                            'bg-sky-100 text-sky-600': auction.status === 'SCHEDULED',
+                            'bg-slate-100 text-slate-500': auction.status === 'ENDED',
+                            'bg-orange-100 text-orange-500': auction.status === 'CANCELLED',
+                          }"
+                        >
+                          {{ auction.status === 'ACTIVE' ? 'LIVE' : auction.status === 'SCHEDULED' ? '예정' : auction.status === 'ENDED' ? '종료' : '취소됨' }}
+                        </span>
+                      </div>
+                      <p class="font-semibold text-slate-800 text-sm line-clamp-1">{{ auction.productName }}</p>
+                      <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
+                        <span class="flex items-center gap-1">
+                          <Clock class="w-3 h-3" />
+                          {{ auction.status === 'SCHEDULED' ? '시작 ' : '종료 ' }}{{ formatDateTime(auction.endAt) }}
+                        </span>
+                        <span>입찰 {{ auction.bidCount }}건</span>
+                      </div>
+                    </div>
+
+                    <!-- 가격 & 액션 -->
+                    <div class="text-right flex-shrink-0 space-y-2">
+                      <div>
+                        <p class="text-xs text-slate-400">{{ auction.status === 'SCHEDULED' ? '시작가' : '현재가' }}</p>
+                        <p class="font-black text-sky-600 text-sm">
+                          ₩{{ (auction.status === 'SCHEDULED' ? auction.startPrice : auction.currentPrice).toLocaleString() }}
+                        </p>
+                      </div>
+                      <div class="flex gap-2 justify-end">
+                        <button
+                          @click="router.push(`/auction/${auction.id}`)"
+                          class="text-xs px-3 py-1.5 rounded-lg border border-sky-200 text-sky-500 hover:bg-sky-50 transition-colors"
+                        >
+                          보기
+                        </button>
+                        <button
+                          v-if="auction.status === 'SCHEDULED'"
+                          @click="cancelAuction(auction.id)"
+                          :disabled="isCancelling === auction.id"
+                          class="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
+                        >
+                          {{ isCancelling === auction.id ? '취소 중...' : '취소' }}
+                        </button>
+                        <span
+                          v-else-if="auction.status === 'ENDED' && auction.currentWinnerNickName"
+                          class="flex items-center gap-1 text-xs text-emerald-600 font-semibold"
+                        >
+                          <Trophy class="w-3 h-3" />
+                          {{ auction.currentWinnerNickName }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
 
         </div>

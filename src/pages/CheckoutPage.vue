@@ -153,7 +153,7 @@ const handleOrder = async () => {
       address: form.address,
       detailAddress: form.addressDetail || undefined,
     })
-    cartStore.clearChecked()
+    await cartStore.clearChecked()
     router.push('/orders/complete')
   } catch (e: any) {
     alert(e?.response?.data?.message ?? '주문에 실패했습니다. 다시 시도해주세요.')

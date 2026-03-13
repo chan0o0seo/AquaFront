@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, type AuthMember } from '@/api'
+import { useCartStore } from '@/stores/cart'
 
 const TOKEN_LIFETIME_MS = 900_000   // 15분
 const REFRESH_BEFORE_MS = 120_000   // 만료 2분 전에 갱신
@@ -41,9 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
         scheduleRefresh()
       } catch {
         // refresh 토큰도 만료됐거나 유효하지 않음
-        clearTimer()
-        user.value = null
-        clearIssuedAt()
+        clear()
         const { default: router } = await import('@/router')
         router.push('/login')
       }
@@ -58,10 +57,16 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // ── store 액션 ────────────────────────────────────
+  function clearPersistentData() {
+    useCartStore().clearLocalCart()
+    localStorage.removeItem('aquahub_seller_mode')
+  }
+
   function clear() {
     user.value = null
     clearTimer()
     clearIssuedAt()
+    clearPersistentData()
   }
 
   async function fetchMe() {
@@ -72,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
         recordIssuedAt()
       }
       scheduleRefresh()
+      await useCartStore().fetchCart()
     } catch {
       user.value = null
       clearTimer()
@@ -86,11 +92,13 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = await authApi.me()
     recordIssuedAt()
     scheduleRefresh()
+    await useCartStore().fetchCart()
   }
 
   async function logout() {
     clearTimer()
     clearIssuedAt()
+    clearPersistentData()
     try {
       await authApi.logout()
     } finally {

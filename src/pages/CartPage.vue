@@ -21,27 +21,25 @@ const {
   isAllChecked
 } = storeToRefs(cartStore)
 
-const { toggleCheck, updateQuantity, removeItem, clearCart, clearChecked } = cartStore
+const { toggleCheck, updateQuantity, removeItem } = cartStore
 
 const isLoading = ref(false)
-const isSyncing = ref(false)
+const { loading: isSyncing } = storeToRefs(cartStore)
 
-onMounted(async () => {
-  isSyncing.value = true
-  await cartStore.syncCartItems()
-  isSyncing.value = false
+onMounted(() => {
+  cartStore.fetchCart()
 })
 
-const handleClearAll = () => {
+const handleClearAll = async () => {
   if (confirm('장바구니를 비우시겠습니까?')) {
-    clearCart()
+    await cartStore.clearCart()
   }
 }
 
-const handleClearChecked = () => {
+const handleClearChecked = async () => {
   if (checkedCount.value === 0) return
   if (confirm(`선택한 ${checkedCount.value}개 상품을 삭제하시겠습니까?`)) {
-    clearChecked()
+    await cartStore.clearChecked()
   }
 }
 
@@ -64,7 +62,7 @@ const sellerGroups = computed(() => {
 </script>
 
 <template>
-  <main class="max-w-6xl mx-auto px-6 py-12 pb-32 lg:pb-12">
+  <main class="max-w-6xl mx-auto px-6 py-24 pb-32 lg:pb-12">
     <!-- Page Header -->
     <div class="flex items-start justify-between mb-8">
       <div>

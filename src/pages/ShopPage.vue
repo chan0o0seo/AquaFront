@@ -309,21 +309,10 @@ const toggleWishlist = (product: ProductSummary, e: Event) => toggleWishlistById
 const showAddedToast = ref(false)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-const addToCart = (product: ProductSummary | SearchResult, e: Event) => {
+const addToCart = async (product: ProductSummary | SearchResult, e: Event) => {
   e.stopPropagation()
   if (product.status === 'SOLD_OUT') return
-  cartStore.addItem({
-    productId: Number(product.id),
-    name: product.name,
-    price: product.price,
-    shippingFee: product.shippingFee,
-    stock: product.stock,
-    status: product.status,
-    productType: product.productType,
-    thumbnailUrl: 'images' in product ? getThumbnailUrl(product) : product.thumbnailUrl,
-    sellerNickName: product.sellerNickName,
-    lowStockWarning: product.lowStockWarning,
-  })
+  await cartStore.addItem(Number(product.id))
   showAddedToast.value = true
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { showAddedToast.value = false }, 2000)

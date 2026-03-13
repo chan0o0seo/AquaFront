@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings, Loader2, CheckCircle, Clock, XCircle, MapPin } from 'lucide-vue-next'
+import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings, Loader2, CheckCircle, Clock, XCircle, MapPin, ShoppingBag } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useSellerApplication } from '@/composables/useSellerApplication'
+import { orderApi, productApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus } from '@/api'
 import WishlistTab from '../components/mypage/WishlistTab.vue'
 import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
 import ProfileEditModal from '../components/mypage/ProfileEditModal.vue'
@@ -26,7 +27,6 @@ const {
   formatDate,
 } = useSellerApplication()
 
-
 // Derived user display
 const user = computed(() => ({
   nickname: authUser.value?.nickName,
@@ -37,25 +37,56 @@ const user = computed(() => ({
 // Active tab
 const activeTab = ref('summary')
 
-// Stats data
-const stats = ref({
-  pendingOrders: 2,
-  activeAuctions: 3,
-  wishlist: 15
-})
+// Summary data
+const isSummaryLoading = ref(false)
+const allOrders = ref<OrderResponse[]>([])
+const wishlistCount = ref(0)
 
-// Recent orders
-const recentOrders = ref([
-  { id: 1, name: '레드 크리스탈 새우 10마리', date: '2025-01-15', status: '배송중', price: '45,000원' },
-  { id: 2, name: '수초 종합 세트', date: '2025-01-14', status: '배송완료', price: '32,000원' },
-  { id: 3, name: 'ADA 어항 60cm', date: '2025-01-12', status: '배송완료', price: '180,000원' },
-])
+const pendingOrderCount = computed(() =>
+  allOrders.value.filter(o => o.status === 'PENDING' || o.status === 'PAID').length
+)
 
-// Active auctions
-const activeAuctions = ref([
-  { id: 1, name: '슈퍼레드 아로와나', currentBid: '850,000원', myBid: '800,000원', timeLeft: '02:15:30' },
-  { id: 2, name: '플래티넘 엔젤피쉬', currentBid: '120,000원', myBid: '120,000원', timeLeft: '05:42:18' },
-])
+const recentOrders = computed(() =>
+  [...allOrders.value]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 3)
+)
+
+const STATUS_COLOR: Record<OrderStatus, string> = {
+  PENDING:   'bg-slate-100 text-slate-500',
+  PAID:      'bg-sky-100 text-sky-600',
+  SHIPPING:  'bg-amber-100 text-amber-600',
+  DELIVERED: 'bg-teal-100 text-teal-600',
+  CONFIRMED: 'bg-emerald-100 text-emerald-600',
+  CANCELLED: 'bg-red-100 text-red-500',
+}
+
+function orderTitle(order: OrderResponse) {
+  const first = order.items[0]?.productName ?? '상품'
+  return order.items.length > 1 ? `${first} 외 ${order.items.length - 1}건` : first
+}
+
+function formatDate2(iso: string) {
+  return iso.slice(0, 10).replace(/-/g, '.')
+}
+
+async function loadSummary() {
+  isSummaryLoading.value = true
+  try {
+    const [orders, wishlist] = await Promise.all([
+      orderApi.getMyOrders(),
+      productApi.getMyWishlist(),
+    ])
+    allOrders.value = orders
+    wishlistCount.value = wishlist.length
+  } catch {
+    // 에러 무시 — 빈 상태로 표시
+  } finally {
+    isSummaryLoading.value = false
+  }
+}
+
+onMounted(loadSummary)
 
 // Menu items
 const menuItems = computed(() => {
@@ -85,7 +116,6 @@ watch(activeTab, (tab) => {
   }
 })
 
-// Member type badge
 const memberTypeBadge = computed(() => {
   const types = {
     buyer: { label: '일반 구매자', class: 'bg-sky-100 text-sky-600' },
@@ -103,7 +133,6 @@ const notifications = ref({
   marketing: false
 })
 
-console.log(user.value);
 // Profile edit modal
 const showProfileEditModal = ref(false)
 
@@ -171,85 +200,85 @@ function goToOrderDetail(orderId: number) {
           <div v-show="activeTab === 'summary'">
             <h1 class="text-3xl font-black text-slate-900 mb-6">홈 요약</h1>
 
-            <!-- Stat Cards -->
-            <div class="grid grid-cols-3 gap-4 mb-8">
-              <div class="bg-sky-50 rounded-2xl p-5 border border-sky-100">
-                <div class="text-3xl font-black text-slate-900">{{ stats.pendingOrders }}</div>
-                <div class="text-sm text-slate-500 mt-1">주문 대기 <span class="text-slate-400">건</span></div>
-              </div>
-              <div class="bg-sky-50 rounded-2xl p-5 border border-sky-100">
-                <div class="flex items-center gap-2">
-                  <span class="text-3xl font-black text-slate-900">{{ stats.activeAuctions }}</span>
-                  <span class="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">입찰중</span>
-                </div>
-                <div class="text-sm text-slate-500 mt-1">진행 중 경매</div>
-              </div>
-              <div class="bg-sky-50 rounded-2xl p-5 border border-sky-100">
-                <div class="text-3xl font-black text-slate-900">{{ stats.wishlist }}</div>
-                <div class="text-sm text-slate-500 mt-1">찜한 상품</div>
-              </div>
+            <!-- 로딩 -->
+            <div v-if="isSummaryLoading" class="flex justify-center py-20">
+              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
             </div>
 
-            <!-- Recent Orders -->
-            <section class="mb-8">
-              <h2 class="text-xl font-bold text-slate-900 mb-4">최근 주문</h2>
-              <div class="space-y-0">
+            <template v-else>
+              <!-- Stat Cards -->
+              <div class="grid grid-cols-2 gap-4 mb-8">
                 <div
-                    v-for="order in recentOrders"
-                    :key="order.id"
-                    @click="goToOrderDetail(order.id)"
-                    class="flex items-center justify-between border-b border-sky-50 py-4 cursor-pointer hover:bg-sky-50 rounded-xl px-2 -mx-2 transition-colors"
+                  class="bg-sky-50 rounded-2xl p-5 border border-sky-100 cursor-pointer hover:border-sky-300 transition-colors"
+                  @click="activeTab = 'orders'"
                 >
-                  <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200"></div>
-                    <div>
-                      <div class="font-medium text-slate-900">{{ order.name }}</div>
-                      <div class="text-sm text-slate-400">{{ order.date }}</div>
+                  <div class="flex items-center gap-3 mb-2">
+                    <div class="w-9 h-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                      <Package class="w-5 h-5 text-sky-500" />
                     </div>
+                    <span class="text-sm text-slate-500">주문 대기</span>
                   </div>
-                  <div class="text-right">
-                    <span
-                        class="text-xs px-2 py-1 rounded-full"
-                        :class="order.status === '배송중' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'"
-                    >
-                      {{ order.status }}
-                    </span>
-                    <div class="text-sm font-semibold text-slate-900 mt-1">{{ order.price }}</div>
+                  <div class="text-3xl font-black text-slate-900">{{ pendingOrderCount }}<span class="text-base font-normal text-slate-400 ml-1">건</span></div>
+                </div>
+                <div
+                  class="bg-sky-50 rounded-2xl p-5 border border-sky-100 cursor-pointer hover:border-sky-300 transition-colors"
+                  @click="activeTab = 'wishlist'"
+                >
+                  <div class="flex items-center gap-3 mb-2">
+                    <div class="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center">
+                      <Heart class="w-5 h-5 text-red-400" />
+                    </div>
+                    <span class="text-sm text-slate-500">찜한 상품</span>
                   </div>
+                  <div class="text-3xl font-black text-slate-900">{{ wishlistCount }}<span class="text-base font-normal text-slate-400 ml-1">개</span></div>
                 </div>
               </div>
-            </section>
 
-            <!-- Active Auctions -->
-            <section>
-              <h2 class="text-xl font-bold text-slate-900 mb-4">참여 중인 경매</h2>
-              <div class="space-y-4">
-                <div
-                    v-for="auction in activeAuctions"
-                    :key="auction.id"
-                    class="flex gap-4 bg-sky-50 rounded-2xl p-4"
-                >
-                  <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-200 to-teal-200 flex-shrink-0"></div>
-                  <div class="flex-1">
-                    <div class="font-medium text-slate-900">{{ auction.name }}</div>
-                    <div class="flex items-center gap-4 mt-2 text-sm">
-                      <div>
-                        <span class="text-slate-500">현재가</span>
-                        <span class="font-bold text-sky-600 ml-1">{{ auction.currentBid }}</span>
+              <!-- Recent Orders -->
+              <section>
+                <div class="flex items-center justify-between mb-4">
+                  <h2 class="text-xl font-bold text-slate-900">최근 주문</h2>
+                  <button
+                    @click="activeTab = 'orders'"
+                    class="text-sm text-sky-500 hover:underline"
+                  >전체보기</button>
+                </div>
+
+                <!-- 주문 없음 -->
+                <div v-if="recentOrders.length === 0" class="bg-sky-50 rounded-2xl p-10 text-center border border-sky-100">
+                  <ShoppingBag class="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p class="text-slate-400 text-sm">아직 주문 내역이 없어요</p>
+                </div>
+
+                <div v-else class="rounded-2xl border border-sky-100 overflow-hidden">
+                  <div
+                    v-for="(order, idx) in recentOrders"
+                    :key="order.orderId"
+                    @click="goToOrderDetail(order.orderId)"
+                    class="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-sky-50 transition-colors"
+                    :class="idx < recentOrders.length - 1 ? 'border-b border-sky-50' : ''"
+                  >
+                    <div class="flex items-center gap-4">
+                      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100 flex items-center justify-center flex-shrink-0">
+                        <Package class="w-5 h-5 text-sky-400" />
                       </div>
                       <div>
-                        <span class="text-slate-500">내 입찰가</span>
-                        <span class="font-semibold text-slate-700 ml-1">{{ auction.myBid }}</span>
+                        <div class="font-medium text-slate-900 text-sm">{{ orderTitle(order) }}</div>
+                        <div class="text-xs text-slate-400 mt-0.5">{{ formatDate2(order.createdAt) }}</div>
+                      </div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                      <span class="text-xs px-2.5 py-1 rounded-full font-medium" :class="STATUS_COLOR[order.status]">
+                        {{ ORDER_STATUS_LABEL[order.status] }}
+                      </span>
+                      <div class="text-sm font-semibold text-slate-900 mt-1.5">
+                        ₩{{ order.totalAmount.toLocaleString() }}
                       </div>
                     </div>
                   </div>
-                  <div class="text-right">
-                    <div class="text-amber-500 font-mono text-lg font-bold">{{ auction.timeLeft }}</div>
-                    <div class="text-xs text-slate-400">남은 시간</div>
-                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            </template>
           </div>
 
           <!-- Delivery Address Tab -->

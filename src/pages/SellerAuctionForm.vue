@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowLeft, Camera, Plus, X, Gavel, AlertTriangle, Check, ChevronRight, ChevronLeft
 } from 'lucide-vue-next'
+import { auctionApi } from '@/api/auction.api'
 
 const router = useRouter()
 
 const currentStep = ref(1)
+const isSubmitting = ref(false)
+const submitError = ref('')
 
 const form = reactive({
-  images: [] as string[],
+  imageFiles: [] as File[],
+  imagePreviews: [] as string[],
   productType: '',
   name: '',
   description: '',
@@ -23,6 +27,10 @@ const form = reactive({
   buyNowPrice: null as number | null,
   startAt: '',
   endAt: '',
+})
+
+onUnmounted(() => {
+  form.imagePreviews.forEach(url => URL.revokeObjectURL(url))
 })
 
 const agreements = ref([false, false, false])
@@ -74,20 +82,56 @@ const goBack = () => {
   else router.push('/mypage/seller')
 }
 
-const submit = () => {
-  if (!allAgreed.value) return
-  router.push('/mypage/seller')
-}
+const submit = async () => {
+  if (!allAgreed.value || isSubmitting.value) return
+  isSubmitting.value = true
+  submitError.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('productName', form.name)
+    if (form.description) fd.append('productDescription', form.description)
+    if (form.species) fd.append('species', form.species)
+    if (form.waterType) fd.append('waterType', form.waterType)
+    if (form.difficulty) fd.append('difficulty', form.difficulty)
+    if (form.minimumTankSize) fd.append('minimumTankSize', String(form.minimumTankSize))
+    fd.append('startPrice', String(form.startPrice))
+    if (form.buyNowEnabled && form.buyNowPrice) fd.append('buyNowPrice', String(form.buyNowPrice))
+    // datetime-local gives YYYY-MM-DDTHH:mm — append :00 for ISO_DATE_TIME
+    fd.append('startAt', form.startAt.length === 16 ? form.startAt + ':00' : form.startAt)
+    fd.append('endAt', form.endAt.length === 16 ? form.endAt + ':00' : form.endAt)
+    form.imageFiles.forEach(file => fd.append('images', file))
 
-// Image upload simulation
-const addImage = () => {
-  if (form.images.length < 5) {
-    form.images.push(`img-${Date.now()}`)
+    await auctionApi.createAuction(fd)
+    router.push('/mypage/seller?tab=auctions')
+  } catch (e: any) {
+    submitError.value = e?.response?.data?.message ?? '경매 등록 중 오류가 발생했습니다.'
+  } finally {
+    isSubmitting.value = false
   }
 }
 
+// File input ref
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const openFilePicker = () => {
+  fileInputRef.value?.click()
+}
+
+const onFilesSelected = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  if (!input.files) return
+  for (const file of Array.from(input.files)) {
+    if (form.imageFiles.length >= 5) break
+    form.imageFiles.push(file)
+    form.imagePreviews.push(URL.createObjectURL(file))
+  }
+  input.value = ''
+}
+
 const removeImage = (idx: number) => {
-  form.images.splice(idx, 1)
+  URL.revokeObjectURL(form.imagePreviews[idx])
+  form.imageFiles.splice(idx, 1)
+  form.imagePreviews.splice(idx, 1)
 }
 
 // Quick time presets
@@ -161,9 +205,13 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
         </div>
       </div>
 
-      <!-- Error message -->
+      <!-- Step error -->
       <div v-if="stepErrors" class="mb-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3">
         {{ stepErrors }}
+      </div>
+      <!-- Submit error -->
+      <div v-if="submitError" class="mb-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3">
+        {{ submitError }}
       </div>
 
       <!-- STEP 1: 상품 정보 -->
@@ -174,11 +222,12 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1">상품 이미지</label>
             <p class="text-xs text-slate-400 mb-3">최대 5장, 첫 번째 이미지가 대표 이미지로 사용됩니다</p>
+            <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="onFilesSelected" />
             <div class="grid grid-cols-3 sm:grid-cols-5 gap-3">
               <!-- Uploaded images -->
-              <div v-for="(img, idx) in form.images" :key="img"
-                   class="relative aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-sky-100 to-teal-200 flex items-center justify-center">
-                <span class="text-2xl">🐠</span>
+              <div v-for="(preview, idx) in form.imagePreviews" :key="preview"
+                   class="relative aspect-square rounded-2xl overflow-hidden bg-sky-50 border border-sky-100">
+                <img :src="preview" class="w-full h-full object-cover" alt="" />
                 <span v-if="idx === 0" class="absolute bottom-0 left-0 right-0 text-center text-[10px] bg-sky-500/80 text-white py-0.5">대표</span>
                 <button @click="removeImage(idx)"
                         class="absolute top-1 right-1 w-5 h-5 bg-slate-800/60 rounded-full flex items-center justify-center text-white">
@@ -186,11 +235,11 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
                 </button>
               </div>
               <!-- Add slot -->
-              <button v-if="form.images.length < 5" @click="addImage"
+              <button v-if="form.imageFiles.length < 5" @click="openFilePicker"
                       class="aspect-square border-2 border-dashed border-sky-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-sky-50 transition-colors">
-                <Camera v-if="form.images.length === 0" class="w-6 h-6 text-sky-400 mb-1" />
+                <Camera v-if="form.imageFiles.length === 0" class="w-6 h-6 text-sky-400 mb-1" />
                 <Plus v-else class="w-5 h-5 text-sky-400" />
-                <span v-if="form.images.length === 0" class="text-xs text-sky-400">대표 이미지</span>
+                <span v-if="form.imageFiles.length === 0" class="text-xs text-sky-400">대표 이미지</span>
               </button>
             </div>
           </div>
@@ -370,8 +419,9 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
         <!-- Preview card -->
         <div class="bg-sky-50 rounded-2xl border border-sky-100 p-6 mb-4">
           <div class="flex gap-5">
-            <div class="w-32 aspect-square rounded-xl bg-gradient-to-br from-sky-100 to-teal-200 flex items-center justify-center text-4xl flex-shrink-0">
-              🐠
+            <div class="w-32 aspect-square rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-br from-sky-100 to-teal-200 flex items-center justify-center text-4xl">
+              <img v-if="form.imagePreviews[0]" :src="form.imagePreviews[0]" class="w-full h-full object-cover" alt="" />
+              <span v-else>🐠</span>
             </div>
             <div class="flex-1 min-w-0">
               <span v-if="form.productType" class="text-xs px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 inline-block mb-2">
@@ -430,13 +480,13 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
         </button>
 
         <button v-else @click="submit"
-                :disabled="!allAgreed"
+                :disabled="!allAgreed || isSubmitting"
                 class="flex items-center gap-2 rounded-full px-8 py-3 font-bold transition-colors"
-                :class="allAgreed
+                :class="allAgreed && !isSubmitting
             ? 'bg-sky-500 hover:bg-sky-600 text-white'
             : 'bg-slate-100 text-slate-400 cursor-not-allowed'">
           <Gavel class="w-4 h-4" />
-          경매 등록하기
+          {{ isSubmitting ? '등록 중...' : '경매 등록하기' }}
         </button>
       </div>
 

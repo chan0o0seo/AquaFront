@@ -262,19 +262,7 @@ const addToCart = async () => {
 
   isAddingToCart.value = true
 
-  // Add to cart store
-  cartStore.addItem({
-    productId: product.value.id,
-    name: product.value.name,
-    price: product.value.price,
-    shippingFee: product.value.shippingFee,
-    stock: product.value.stock,
-    status: product.value.status as 'ACTIVE' | 'SOLD_OUT',
-    productType: product.value.productType,
-    thumbnailUrl: product.value.images.find(i => i.representative)?.imageUrl ?? product.value.images[0]?.imageUrl ?? null,
-    sellerNickName: product.value.sellerNickName,
-    lowStockWarning: product.value.lowStockWarning
-  }, quantity.value)
+  await cartStore.addItem(product.value.id, quantity.value)
 
   // Show toast
   showAddedToast.value = true

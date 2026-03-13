@@ -1,75 +1,74 @@
 import { api } from '@/lib/axios'
-import { unwrap, type PageResponse } from './types'
+import { unwrap } from './types'
 
-export type AuctionStatus = 'LIVE' | 'UPCOMING' | 'ENDED'
+export type AuctionStatus = 'SCHEDULED' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 
-export interface AuctionSummary {
+export interface AuctionResponse {
   id: number
-  name: string
-  sellerId: number
-  sellerNickName: string
-  currentBid: number
-  startBid: number
-  bidCount: number
-  endsAt: string          // ISO 문자열 — 프론트에서 카운트다운 계산
-  status: AuctionStatus
-  thumbnailUrl: string | null
-  category: string
-  tags: string[]
-}
-
-export interface AuctionDetail extends AuctionSummary {
-  description: string | null
+  productName: string
+  productDescription: string | null
   imageUrls: string[]
-  minimumBidUnit: number  // 최소 입찰 단위 (예: 1000)
-  myBid: number | null    // 내가 현재 입찰한 금액 (미입찰 시 null)
-  bids: BidHistory[]
-}
-
-export interface BidHistory {
-  id: number
-  bidderNickName: string  // 익명 처리 (예: '홍**')
-  amount: number
+  species: string | null
+  sellerNickName: string
+  startPrice: number
+  currentPrice: number
+  buyNowPrice: number | null
+  currentWinnerNickName: string | null
+  startAt: string
+  endAt: string
+  status: AuctionStatus
   createdAt: string
-  isMine: boolean
+  bidCount: number
 }
 
-export interface PlaceBidRequest {
+export interface BidResponse {
+  id: number
+  auctionId: number
+  bidderNickName: string
   amount: number
+  bidAt: string
 }
 
-export interface AuctionSearchParams {
-  status?: AuctionStatus
-  category?: string
-  keyword?: string
-  page?: number
-  size?: number
+export interface MyBidResponse {
+  auctionId: number
+  productName: string
+  imageUrls: string[]
+  sellerNickName: string
+  status: AuctionStatus
+  endAt: string
+  startPrice: number
+  currentPrice: number
+  myHighestBid: number
+  winning: boolean
 }
 
 export const auctionApi = {
-  // GET /api/auctions?status=LIVE&category=어류&page=0
-  getList: (params?: AuctionSearchParams) =>
-    api.get<{ success: boolean; data: PageResponse<AuctionSummary>; message: string }>(
-      '/auctions/active',
-      { params }
-    ).then(unwrap),
+  getActive: () =>
+    api.get<{ success: boolean; data: AuctionResponse[] }>('/auctions/active').then(unwrap),
 
-  // GET /api/auctions/:auctionId
+  getScheduled: () =>
+    api.get<{ success: boolean; data: AuctionResponse[] }>('/auctions/scheduled').then(unwrap),
+
   getDetail: (auctionId: number) =>
-    api.get<{ success: boolean; data: AuctionDetail; message: string }>(`/auctions/${auctionId}`)
-      .then(unwrap),
+    api.get<{ success: boolean; data: AuctionResponse }>(`/auctions/${auctionId}`).then(unwrap),
 
-  // POST /api/auctions/:auctionId/bids
-  placeBid: (auctionId: number, body: PlaceBidRequest) =>
-    api.post<{ success: boolean; data: BidHistory; message: string }>(
-      `/auctions/${auctionId}/bids`,
-      body
-    ).then(unwrap),
+  getBids: (auctionId: number) =>
+    api.get<{ success: boolean; data: BidResponse[] }>(`/auctions/${auctionId}/bids`).then(unwrap),
 
-  // GET /api/members/me/auctions?page= — 내가 입찰한 경매 목록
-  getMyBids: (page = 0) =>
-    api.get<{ success: boolean; data: PageResponse<AuctionSummary>; message: string }>(
-      '/members/me/auctions',
-      { params: { page } }
-    ).then(unwrap),
+  placeBid: (auctionId: number, body: { amount: number }) =>
+    api.post<{ success: boolean; data: BidResponse }>(`/auctions/${auctionId}/bids`, body).then(unwrap),
+
+  buyNow: (auctionId: number) =>
+    api.post<{ success: boolean; data: AuctionResponse }>(`/auctions/${auctionId}/buy-now`).then(unwrap),
+
+  getMyBids: () =>
+    api.get<{ success: boolean; data: MyBidResponse[] }>('/auctions/me/bids').then(unwrap),
+
+  getSellerAuctions: () =>
+    api.get<{ success: boolean; data: AuctionResponse[] }>('/auctions/seller/me').then(unwrap),
+
+  createAuction: (formData: FormData) =>
+    api.post<{ success: boolean; data: AuctionResponse }>('/auctions', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(unwrap),
 }

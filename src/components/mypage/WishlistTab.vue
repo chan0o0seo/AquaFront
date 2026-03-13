@@ -63,20 +63,9 @@ async function removeWishlist(id: number) {
   }
 }
 
-function addToCart(item: ProductSummary) {
+async function addToCart(item: ProductSummary) {
   if (item.status === 'SOLD_OUT') return
-  cartStore.addItem({
-    productId: item.id,
-    name: item.name,
-    price: item.price,
-    shippingFee: item.shippingFee,
-    stock: item.stock,
-    status: item.status,
-    productType: item.productType,
-    thumbnailUrl: getThumbnailUrl(item),
-    sellerNickName: item.sellerNickName,
-    lowStockWarning: item.lowStockWarning,
-  })
+  await cartStore.addItem(item.id)
   cartFeedback.value[item.id] = true
   setTimeout(() => { delete cartFeedback.value[item.id] }, 1500)
   showAddedToast.value = true
