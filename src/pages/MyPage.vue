@@ -5,7 +5,7 @@ import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings, Loader2, Chec
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-import { orderApi, productApi, auctionApi, memberApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus, type NotificationType } from '@/api'
+import { orderApi, productApi, memberApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus, type NotificationType } from '@/api'
 import type { MyBidResponse } from '@/api/auction.api'
 import WishlistTab from '../components/mypage/WishlistTab.vue'
 import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
