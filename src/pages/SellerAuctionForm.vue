@@ -5,6 +5,7 @@ import {
   ArrowLeft, Camera, Plus, X, Gavel, AlertTriangle, Check, ChevronRight, ChevronLeft
 } from 'lucide-vue-next'
 import { auctionApi } from '@/api/auction.api'
+import RichTextEditor from '@/components/seller/RichTextEditor.vue'
 
 const router = useRouter()
 
@@ -52,9 +53,15 @@ const typeLabelMap: Record<string, string> = {
   FISH: '어류', INVERTEBRATE: '새우/갑각류', PLANT: '수초', EQUIPMENT: '용품', ACCESSORY: '소품'
 }
 
+// Tiptap 빈 상태(<p></p>, <p><br></p>) 제외한 실제 내용 여부
+const hasDescription = computed(() => {
+  const stripped = form.description.replace(/<[^>]*>/g, '').trim()
+  return stripped.length > 0
+})
+
 // Step 1 validation
 const step1Valid = computed(() =>
-    form.productType !== '' && form.name.trim() !== '' && form.description.trim() !== ''
+    form.productType !== '' && form.name.trim() !== '' && hasDescription.value
 )
 
 // Step 2 validation
@@ -276,9 +283,7 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
             <label class="block text-sm font-semibold text-slate-700 mb-2">
               상품 설명 <span class="text-red-400 ml-0.5">*</span>
             </label>
-            <textarea v-model="form.description"
-                      placeholder="개체 특징, 크기, 사육 기간, 건강 상태 등을 자세히 입력해주세요"
-                      class="w-full border border-sky-100 rounded-xl px-4 py-3 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 resize-none min-h-[160px]" />
+            <RichTextEditor v-model="form.description" />
           </div>
 
           <!-- 생물 정보 (FISH / INVERTEBRATE / PLANT only) -->
@@ -428,7 +433,10 @@ const stepLabels = ['상품 정보', '경매 설정', '확인 및 등록']
                 {{ typeLabelMap[form.productType] ?? form.productType }}
               </span>
               <p class="font-black text-slate-900 text-lg leading-snug mb-1">{{ form.name || '상품명 미입력' }}</p>
-              <p class="text-slate-500 text-sm line-clamp-2">{{ form.description || '설명 미입력' }}</p>
+              <div v-if="hasDescription"
+                   class="tiptap text-slate-500 text-sm line-clamp-2"
+                   v-html="form.description" />
+              <p v-else class="text-slate-400 text-sm">설명 미입력</p>
             </div>
           </div>
         </div>

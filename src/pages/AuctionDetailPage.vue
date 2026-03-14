@@ -22,6 +22,7 @@ const bidAmount = ref(0)
 const showConfirm = ref(false)
 const bidSubmitted = ref(false)
 const notifyRequested = ref(false)
+const isTogglingWatch = ref(false)
 const isSubmittingBid = ref(false)
 const isBuyingNow = ref(false)
 const quickAddOptions = [5000, 10000, 30000]
@@ -50,6 +51,10 @@ const isEndingSoon = computed(() => {
 const isMine = (bid: BidResponse) =>
   !!user.value && bid.bidderNickName === user.value.nickName
 
+const isOwner = computed(() =>
+  !!user.value && auction.value?.sellerNickName === user.value.nickName
+)
+
 let interval: ReturnType<typeof setInterval>
 onMounted(async () => {
   try {
@@ -60,6 +65,9 @@ onMounted(async () => {
     auction.value = detail
     bids.value = bidList
     bidAmount.value = minBid.value
+    if (isLoggedIn.value) {
+      notifyRequested.value = await auctionApi.isWatching(auctionId).catch(() => false)
+    }
   } catch (e) {
     console.error('Failed to load auction', e)
   } finally {
@@ -106,6 +114,25 @@ const handleBuyNow = async () => {
     alert(e?.response?.data?.message ?? '즉시 구매에 실패했습니다.')
   } finally {
     isBuyingNow.value = false
+  }
+}
+
+const toggleWatch = async () => {
+  if (!isLoggedIn.value) { router.push('/login'); return }
+  if (isTogglingWatch.value) return
+  isTogglingWatch.value = true
+  try {
+    if (notifyRequested.value) {
+      await auctionApi.unwatchAuction(auctionId)
+      notifyRequested.value = false
+    } else {
+      await auctionApi.watchAuction(auctionId)
+      notifyRequested.value = true
+    }
+  } catch (e) {
+    // 이미 신청/취소 상태면 반영
+  } finally {
+    isTogglingWatch.value = false
   }
 }
 
@@ -298,8 +325,15 @@ const formatBidTime = (bidAt: string) => {
 
               <div class="h-px bg-sky-50 mb-5" />
 
+              <!-- Owner Notice (ACTIVE) -->
+              <div v-if="auction.status === 'ACTIVE' && isOwner" class="bg-sky-50 border border-sky-100 rounded-2xl p-4 text-center">
+                <Gavel class="w-8 h-8 text-sky-300 mx-auto mb-2" />
+                <p class="text-sm font-semibold text-slate-700">내가 등록한 경매입니다</p>
+                <p class="text-xs text-slate-400 mt-1">판매자는 자신의 경매에 입찰할 수 없습니다</p>
+              </div>
+
               <!-- ACTIVE: Bid Input -->
-              <div v-if="auction.status === 'ACTIVE'" class="space-y-4">
+              <div v-else-if="auction.status === 'ACTIVE'" class="space-y-4">
                 <div>
                   <label class="text-xs font-medium text-slate-500 mb-2 block">입찰 금액</label>
                   <div class="relative">
@@ -433,8 +467,9 @@ const formatBidTime = (bidAt: string) => {
                   </p>
                 </div>
                 <button
-                  @click="notifyRequested = !notifyRequested"
-                  class="w-full py-3 rounded-full font-semibold text-sm transition-all"
+                  @click="toggleWatch"
+                  :disabled="isTogglingWatch"
+                  class="w-full py-3 rounded-full font-semibold text-sm transition-all disabled:opacity-60"
                   :class="notifyRequested ? 'bg-sky-500 text-white' : 'border border-sky-200 text-sky-500 hover:bg-sky-50'"
                 >
                   <div class="flex items-center justify-center gap-2">

@@ -8,7 +8,7 @@ const searchInput = ref('')
 
 const handleSearch = () => {
   const q = searchInput.value.trim()
-  router.push(q ? `/shop?keyword=${encodeURIComponent(q)}` : '/shop')
+  router.push(q ? `/search?keyword=${encodeURIComponent(q)}` : '/search')
 }
 
 const stats = [
@@ -85,7 +85,7 @@ const floatingCards = [
           <!-- CTA Buttons -->
           <div class="flex flex-col sm:flex-row gap-4 pt-2">
             <button
-              @click="router.push('/shop')"
+              @click="router.push('/search')"
               class="px-8 py-4 bg-sky-500 text-white font-semibold rounded-full hover:bg-sky-600 transition-all duration-200 hover:shadow-lg hover:scale-[1.02]"
             >
               쇼핑 시작하기

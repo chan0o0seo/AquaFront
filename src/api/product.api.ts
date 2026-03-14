@@ -63,18 +63,22 @@ export interface ProductSearchParams {
 
 export interface Review {
   id: number
-  reviewerId: number
+  reviewerId: string | null
   reviewerNickName: string
   rating: number
-  content: string
+  content: string | null
   imageUrls: string[]
   createdAt: string
+  secret: boolean
+  /** true면 현재 뷰어에게 내용이 가려진 상태 */
+  masked: boolean
 }
 
 export interface ReviewRequest {
   rating: number
   content: string
   imageUrls?: string[]
+  secret?: boolean
 }
 
 export const productApi = {

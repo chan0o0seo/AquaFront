@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Menu, X, ShoppingCart, Fish, User, Store, Search } from 'lucide-vue-next'
+import { Menu, X, ShoppingCart, Fish, User, Store, Search, Bell } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,8 +21,42 @@ const setSellerMode = (value: boolean) => {
   localStorage.setItem('aquahub_seller_mode', String(value))
 }
 
+const notificationStore = useNotificationStore()
+const { notifications, unreadCount } = storeToRefs(notificationStore)
+
 const isScrolled = ref(false)
 const isMobileMenuOpen = ref(false)
+const showNotifications = ref(false)
+
+const formatNotificationTime = (iso: string) => {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 1) return '방금 전'
+  if (diffMin < 60) return `${diffMin}분 전`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `${diffH}시간 전`
+  return `${d.getMonth() + 1}.${d.getDate()}`
+}
+
+const handleNotificationClick = async (n: typeof notifications.value[0]) => {
+  if (!n.read) await notificationStore.markRead(n.id)
+  showNotifications.value = false
+  if (n.referenceId) {
+    router.push(`/auction/${n.referenceId}`)
+  }
+}
+
+// 드롭다운 바깥 클릭 시 닫기
+const closeOnOutsideClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (!target.closest('#notification-panel')) {
+    showNotifications.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', closeOnOutsideClick))
+onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
 
 const navLinks = [
   { name: '쇼핑몰', to: '/shop' },
@@ -58,6 +93,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
+  document.removeEventListener('click', closeOnOutsideClick)
 })
 </script>
 
@@ -158,9 +194,71 @@ onUnmounted(() => {
         >
           <Search class="w-5 h-5" />
         </button>
+        <!-- 알림 벨 -->
+        <div v-if="isLoggedIn" id="notification-panel" class="relative">
+          <button
+            @click.stop="showNotifications = !showNotifications"
+            class="relative p-2 text-slate-600 hover:text-sky-600 transition-colors"
+            aria-label="알림"
+          >
+            <Bell class="w-5 h-5" />
+            <span
+              v-if="unreadCount > 0"
+              class="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5"
+            >
+              {{ unreadCount > 9 ? '9+' : unreadCount }}
+            </span>
+          </button>
+
+          <!-- 알림 드롭다운 -->
+          <div
+            v-if="showNotifications"
+            class="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-xl border border-sky-100 z-50 overflow-hidden"
+          >
+            <!-- 헤더 -->
+            <div class="flex items-center justify-between px-4 py-3 border-b border-sky-50">
+              <span class="font-black text-slate-800 text-sm">알림</span>
+              <button
+                v-if="unreadCount > 0"
+                @click="notificationStore.markAllRead()"
+                class="text-xs text-sky-500 hover:text-sky-700 font-medium"
+              >
+                전체 읽음
+              </button>
+            </div>
+
+            <!-- 알림 목록 -->
+            <div class="max-h-80 overflow-y-auto">
+              <div v-if="notifications.length === 0" class="py-10 text-center">
+                <Bell class="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                <p class="text-sm text-slate-400">알림이 없습니다</p>
+              </div>
+
+              <div
+                v-for="n in notifications"
+                :key="n.id"
+                @click="handleNotificationClick(n)"
+                class="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-sky-50 transition-colors border-b border-slate-50 last:border-0"
+                :class="!n.read ? 'bg-sky-50/60' : ''"
+              >
+                <!-- 읽음 표시 -->
+                <span
+                  class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0"
+                  :class="!n.read ? 'bg-sky-500' : 'bg-transparent'"
+                />
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold text-slate-800 leading-snug">{{ n.title }}</p>
+                  <p class="text-xs text-slate-500 mt-0.5 line-clamp-2">{{ n.message }}</p>
+                  <p class="text-xs text-slate-300 mt-1">{{ formatNotificationTime(n.createdAt) }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <RouterLink to="/cart" class="relative p-2 text-slate-600 hover:text-sky-600 transition-colors">
           <ShoppingCart class="w-5 h-5" />
-          <span 
+          <span
             v-show="cartItems.length > 0"
             class="absolute -top-1 -right-1 w-5 h-5 bg-sky-500 text-white text-xs font-bold rounded-full flex items-center justify-center"
           >

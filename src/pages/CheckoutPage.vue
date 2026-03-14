@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
 import { orderApi, paymentApi, productApi, getThumbnailUrl } from '@/api'
 import type { ProductDetail } from '@/api'
+import { memberApi, type DeliveryAddressResponse } from '@/api/member.api'
 import {
   ArrowLeft,
   MapPin,
@@ -12,7 +13,9 @@ import {
   Thermometer,
   Fish,
   Loader2,
-  CreditCard
+  CreditCard,
+  CheckCircle2,
+  Plus,
 } from 'lucide-vue-next'
 
 declare const PortOne: {
@@ -29,6 +32,47 @@ const router = useRouter()
 const route = useRoute()
 const cartStore = useCartStore()
 const { checkedItems, subtotal, totalShippingFee, totalPrice } = storeToRefs(cartStore)
+
+// ── 배송지 ─────────────────────────────────────────────
+const savedAddresses = ref<DeliveryAddressResponse[]>([])
+const addressMode = ref<'saved' | 'new'>('new')
+const selectedAddressId = ref<number | null>(null)
+const isLoadingAddresses = ref(false)
+
+async function loadAddresses() {
+  isLoadingAddresses.value = true
+  try {
+    savedAddresses.value = await memberApi.getAddresses()
+    if (savedAddresses.value.length > 0) {
+      addressMode.value = 'saved'
+      const defaultAddr = savedAddresses.value.find(a => a.isDefault) ?? savedAddresses.value[0]
+      selectAddress(defaultAddr)
+    }
+  } catch {
+    // 로그인 안 됐거나 주소 없으면 새로 입력 모드 유지
+  } finally {
+    isLoadingAddresses.value = false
+  }
+}
+
+function selectAddress(addr: DeliveryAddressResponse) {
+  selectedAddressId.value = addr.id
+  form.recipient = addr.recipientName
+  form.phone = addr.phoneNumber
+  form.zipCode = addr.zipCode
+  form.address = addr.address
+  form.addressDetail = addr.detailAddress ?? ''
+}
+
+function switchToNew() {
+  addressMode.value = 'new'
+  selectedAddressId.value = null
+  form.recipient = ''
+  form.phone = ''
+  form.zipCode = ''
+  form.address = ''
+  form.addressDetail = ''
+}
 
 // Delivery form
 const form = reactive({
@@ -96,7 +140,6 @@ const isFormValid = computed(() =>
 const isSubmitting = ref(false)
 
 const handleAddressSearch = () => {
-  // Mock address search - in real app, integrate with Kakao/Naver address API
   form.address = '서울시 강남구 테헤란로 123'
 }
 
@@ -233,6 +276,7 @@ onMounted(async () => {
 const goBack = () => {
   router.back()
 }
+onMounted(loadAddresses)
 </script>
 
 <template>
@@ -259,52 +303,119 @@ const goBack = () => {
           <section class="bg-white rounded-2xl border border-sky-100 p-6">
             <h2 class="text-lg font-bold text-slate-900 mb-4">배송지</h2>
 
-            <div class="space-y-4">
-              <!-- 수령인 -->
-              <div>
-                <input
-                    v-model="form.recipient"
-                    type="text"
-                    placeholder="수령인 이름"
-                    class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                />
+            <!-- 주소 모드 탭 -->
+            <div class="flex gap-2 mb-4">
+              <button
+                type="button"
+                @click="addressMode = 'saved'"
+                :disabled="savedAddresses.length === 0"
+                class="px-4 py-2 rounded-full text-sm font-semibold transition-colors"
+                :class="addressMode === 'saved'
+                  ? 'bg-sky-500 text-white'
+                  : 'border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-40 disabled:cursor-not-allowed'"
+              >
+                저장된 배송지 {{ savedAddresses.length > 0 ? `(${savedAddresses.length})` : '' }}
+              </button>
+              <button
+                type="button"
+                @click="switchToNew"
+                class="px-4 py-2 rounded-full text-sm font-semibold transition-colors flex items-center gap-1"
+                :class="addressMode === 'new'
+                  ? 'bg-sky-500 text-white'
+                  : 'border border-sky-100 text-slate-500 hover:bg-sky-50'"
+              >
+                <Plus class="w-3.5 h-3.5" />
+                새로 입력
+              </button>
+            </div>
+
+            <!-- 로딩 -->
+            <div v-if="isLoadingAddresses" class="flex justify-center py-6">
+              <Loader2 class="w-5 h-5 animate-spin text-sky-400" />
+            </div>
+
+            <!-- 저장된 배송지 목록 -->
+            <div v-else-if="addressMode === 'saved'" class="space-y-2 mb-4">
+              <button
+                v-for="addr in savedAddresses"
+                :key="addr.id"
+                type="button"
+                @click="selectAddress(addr)"
+                class="w-full text-left p-4 rounded-xl border-2 transition-colors"
+                :class="selectedAddressId === addr.id
+                  ? 'border-sky-400 bg-sky-50'
+                  : 'border-sky-100 hover:border-sky-200'"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold text-slate-800 text-sm">{{ addr.recipientName }}</span>
+                      <span class="text-slate-400 text-sm">{{ addr.phoneNumber }}</span>
+                      <span
+                        v-if="addr.isDefault"
+                        class="text-xs px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full font-medium"
+                      >
+                        기본
+                      </span>
+                    </div>
+                    <div class="text-sm text-slate-500 mt-1">
+                      [{{ addr.zipCode }}] {{ addr.address }}
+                      <span v-if="addr.detailAddress"> {{ addr.detailAddress }}</span>
+                    </div>
+                  </div>
+                  <CheckCircle2
+                    class="w-5 h-5 flex-shrink-0 mt-0.5 transition-colors"
+                    :class="selectedAddressId === addr.id ? 'text-sky-500' : 'text-slate-200'"
+                  />
+                </div>
+              </button>
+            </div>
+
+            <!-- 새로 입력 폼 -->
+            <div v-else class="space-y-4 mb-4">
+              <input
+                v-model="form.recipient"
+                type="text"
+                placeholder="수령인 이름"
+                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+              />
               </div>
 
               <!-- 연락처 -->
               <div>
-                <input
-                    v-model="form.phone"
-                    type="tel"
-                    placeholder="010-1234-5678"
-                    class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                />
+              <input
+                v-model="form.phone"
+                type="tel"
+                placeholder="010-1234-5678"
+                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+              />
               </div>
 
               <!-- 우편번호 -->
               <div>
-                <input
-                    v-model="form.zipCode"
-                    type="text"
-                    placeholder="우편번호"
-                    maxlength="6"
-                    class="w-36 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-300"
-                />
+              <input
+                v-model="form.zipCode"
+                type="text"
+                placeholder="우편번호"
+                maxlength="6"
+                class="w-36 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-300"
+              />
               </div>
 
               <!-- 배송지 주소 -->
               <div class="flex gap-3">
                 <input
-                    v-model="form.address"
-                    type="text"
-                    placeholder="주소를 검색하세요"
-                    readonly
-                    class="flex-1 px-4 py-3 rounded-xl border border-sky-100 bg-slate-50 text-slate-800 placeholder-slate-400 focus:outline-none cursor-pointer"
-                    @click="handleAddressSearch"
+                  v-model="form.address"
+                  type="text"
+                  placeholder="주소를 검색하세요"
+                  readonly
+                  class="flex-1 px-4 py-3 rounded-xl border border-sky-100 bg-slate-50 text-slate-800 placeholder-slate-400 focus:outline-none cursor-pointer"
+                  @click="handleAddressSearch"
                 />
                 <button
-                    type="button"
-                    @click="handleAddressSearch"
-                    class="flex items-center gap-2 bg-sky-50 text-sky-600 rounded-xl px-4 py-3 hover:bg-sky-100 transition-colors font-medium whitespace-nowrap"
+                  type="button"
+                  @click="handleAddressSearch"
+                  class="flex items-center gap-2 bg-sky-50 text-sky-600 rounded-xl px-4 py-3 hover:bg-sky-100 transition-colors font-medium whitespace-nowrap"
                 >
                   <MapPin class="w-4 h-4" />
                   주소 검색
@@ -313,37 +424,37 @@ const goBack = () => {
 
               <!-- 상세 주소 -->
               <div>
-                <input
-                    v-model="form.addressDetail"
-                    type="text"
-                    placeholder="아파트 동/호수"
-                    class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                />
-              </div>
+              <input
+                v-model="form.addressDetail"
+                type="text"
+                placeholder="아파트 동/호수"
+                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+              />
+            </div>
 
-              <!-- 배송 메모 -->
-              <div>
-                <select
-                    v-model="form.memo"
-                    class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                >
-                  <option value="" disabled>배송 메모를 선택하세요</option>
-                  <option value="guard">부재시 경비실에 맡겨주세요</option>
-                  <option value="door">부재시 문 앞에 놓아주세요</option>
-                  <option value="call">배송 전 연락 부탁드립니다</option>
-                  <option value="custom">직접 입력</option>
-                </select>
+            <!-- 배송 메모 (공통) -->
+            <div class="space-y-3">
+              <select
+                v-model="form.memo"
+                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all appearance-none cursor-pointer"
+              >
+                <option value="" disabled>배송 메모를 선택하세요</option>
+                <option value="guard">부재시 경비실에 맡겨주세요</option>
+                <option value="door">부재시 문 앞에 놓아주세요</option>
+                <option value="call">배송 전 연락 부탁드립니다</option>
+                <option value="custom">직접 입력</option>
+              </select>
               </div>
 
               <!-- 직접 입력 -->
               <div v-if="form.memo === 'custom'">
-                <input
-                    v-model="form.memoCustom"
-                    type="text"
-                    placeholder="배송 메모를 입력하세요"
-                    class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                />
-              </div>
+              <input
+                v-if="form.memo === 'custom'"
+                v-model="form.memoCustom"
+                type="text"
+                placeholder="배송 메모를 입력하세요"
+                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+              />
             </div>
           </section>
 

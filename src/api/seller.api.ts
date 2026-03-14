@@ -225,45 +225,56 @@ export const sellerApi = {
       .then(unwrap),
 
   // ── 상품 이미지 (개별 관리) ────────────────────────
-  // POST /api/products/{productId}/images — 이미지 파일 직접 업로드 (multipart)
   uploadProductImages: (productId: number, formData: FormData) =>
     api.post<{ success: boolean; data: import('./product.api').ProductImage[]; message: string }>(
       `/products/${productId}/images`, formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ).then(unwrap),
 
-  // PATCH /api/products/{productId}/images/order — 이미지 순서 변경
   reorderProductImages: (productId: number, imageIds: number[]) =>
     api.patch(`/products/${productId}/images/order`, { imageIds }),
 
-  // PATCH /api/products/{productId}/images/{imageId}/representative — 대표 이미지 설정
   setRepresentativeImage: (productId: number, imageId: number) =>
     api.patch(`/products/${productId}/images/${imageId}/representative`),
 
-  // DELETE /api/products/{productId}/images/{imageId} — 이미지 삭제
   deleteProductImage: (productId: number, imageId: number) =>
     api.delete(`/products/${productId}/images/${imageId}`),
 
   // ── 수수료 정책 (관리자) ───────────────────────────
-  // GET /api/admin/commission-policies
   getCommissionPolicies: () =>
     api.get<{ success: boolean; data: CommissionPolicyResponse[]; message: string }>(
       '/admin/commission-policies'
     ).then(unwrap),
 
-  // POST /api/admin/commission-policies
   createCommissionPolicy: (body: CommissionPolicyRequest) =>
     api.post<{ success: boolean; data: CommissionPolicyResponse; message: string }>(
       '/admin/commission-policies', body
     ).then(unwrap),
 
-  // PUT /api/admin/commission-policies/{id}
   updateCommissionPolicy: (id: number, body: CommissionPolicyRequest) =>
     api.put<{ success: boolean; data: CommissionPolicyResponse; message: string }>(
       `/admin/commission-policies/${id}`, body
     ).then(unwrap),
 
-  // DELETE /api/admin/commission-policies/{id}
   deleteCommissionPolicy: (id: number) =>
     api.delete(`/admin/commission-policies/${id}`),
+
+  // ── 판매자 주문 관리 ──────────────────────────────
+  getSellerOrders: (status?: string) =>
+    api.get<{ success: boolean; data: import('./order.api').OrderResponse[]; message: string }>(
+      '/seller/orders', { params: status ? { status } : {} }
+    ).then(unwrap),
+
+  shipOrder: (orderId: number, body: { courier: string; trackingNumber: string }) =>
+    api.patch<{ success: boolean; data: import('./order.api').OrderResponse; message: string }>(
+      `/seller/orders/${orderId}/ship`, body
+    ).then(unwrap),
+
+  deliverOrder: (orderId: number) =>
+    api.patch<{ success: boolean; data: import('./order.api').OrderResponse; message: string }>(
+      `/seller/orders/${orderId}/deliver`
+    ).then(unwrap),
+
+  cancelSellerOrder: (orderId: number) =>
+    api.patch(`/seller/orders/${orderId}/cancel`),
 }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Eye, EyeOff, AlertTriangle, Check, LogOut, Trash2, Loader2, Mail } from 'lucide-vue-next'
+import { Eye, EyeOff, AlertTriangle, Check, LogOut, Trash2, Loader2 } from 'lucide-vue-next'
 import type { AuthMember } from '@/api'
 import { memberApi } from '@/api/member.api'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import { checkPasswordRules, isPasswordValid } from '@/utils/password'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -50,54 +51,18 @@ async function saveProfile() {
   }
 }
 
-// ── 비밀번호 변경 (이메일 인증 코드 방식) ──────────────
-const verificationCode  = ref('')
-const newPassword       = ref('')
-const confirmPassword   = ref('')
-const showNewPw         = ref(false)
-const showConfirmPw     = ref(false)
-const codeSent          = ref(false)
-const isSendingCode     = ref(false)
-const isChangingPw      = ref(false)
-const codeTimer         = ref(0)
-const pwError           = ref('')
-const pwSuccess         = ref(false)
-let codeTimerInterval: ReturnType<typeof setInterval> | null = null
+// ── 비밀번호 변경 (현재 비밀번호 방식) ──────────────
+const currentPassword = ref('')
+const newPassword     = ref('')
+const confirmPassword = ref('')
+const showCurrentPw   = ref(false)
+const showNewPw       = ref(false)
+const showConfirmPw   = ref(false)
+const isChangingPw    = ref(false)
+const pwError         = ref('')
+const pwSuccess       = ref(false)
 
-const codeTimerLabel = computed(() => {
-  const m = Math.floor(codeTimer.value / 60)
-  const s = codeTimer.value % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-})
-
-function startCodeTimer() {
-  codeTimer.value = 300
-  if (codeTimerInterval) clearInterval(codeTimerInterval)
-  codeTimerInterval = setInterval(() => {
-    if (codeTimer.value > 0) {
-      codeTimer.value--
-    } else {
-      clearInterval(codeTimerInterval!)
-      codeSent.value = false
-    }
-  }, 1000)
-}
-
-async function sendVerifyEmail() {
-  if (isSendingCode.value) return
-  isSendingCode.value = true
-  pwError.value = ''
-  try {
-    await memberApi.sendPasswordVerifyEmail()
-    codeSent.value = true
-    verificationCode.value = ''
-    startCodeTimer()
-  } catch (e: any) {
-    pwError.value = e?.response?.data?.message ?? '인증 코드 발송에 실패했습니다.'
-  } finally {
-    isSendingCode.value = false
-  }
-}
+const pwRules = computed(() => checkPasswordRules(newPassword.value))
 
 const passwordsMatch = computed(() => {
   if (!confirmPassword.value) return null
@@ -105,9 +70,8 @@ const passwordsMatch = computed(() => {
 })
 
 const isPasswordFormValid = computed(() =>
-  codeSent.value &&
-  verificationCode.value.length > 0 &&
-  newPassword.value.length >= 8 &&
+  currentPassword.value.length > 0 &&
+  isPasswordValid(newPassword.value) &&
   passwordsMatch.value === true
 )
 
@@ -116,17 +80,12 @@ async function changePassword() {
   isChangingPw.value = true
   pwError.value = ''
   try {
-    await memberApi.changePassword({
-      verificationCode: verificationCode.value,
-      newPassword: newPassword.value,
-    })
-    clearInterval(codeTimerInterval!)
-    codeSent.value = false
-    verificationCode.value = ''
+    await memberApi.changePasswordDirect(currentPassword.value, newPassword.value)
+    currentPassword.value = ''
     newPassword.value = ''
     confirmPassword.value = ''
     pwSuccess.value = true
-    setTimeout(() => { pwSuccess.value = false }, 2000)
+    setTimeout(() => { pwSuccess.value = false }, 2500)
   } catch (e: any) {
     pwError.value = e?.response?.data?.message ?? '비밀번호 변경에 실패했습니다.'
   } finally {
@@ -254,40 +213,22 @@ async function handleDelete() {
       <h2 class="text-lg font-bold text-slate-900 mb-5">비밀번호 변경</h2>
 
       <div class="space-y-4">
-        <!-- 인증 코드 발송 -->
+        <!-- 현재 비밀번호 -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1.5">이메일 인증</label>
-          <div class="flex gap-2">
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">현재 비밀번호</label>
+          <div class="relative">
             <input
-              :value="user.email"
-              disabled
-              class="flex-1 border border-sky-100 rounded-xl px-4 py-3 text-slate-400 bg-slate-50 cursor-not-allowed text-sm"
+              v-model="currentPassword"
+              :type="showCurrentPw ? 'text' : 'password'"
+              placeholder="현재 비밀번호를 입력하세요"
+              class="w-full border border-sky-100 rounded-xl px-4 py-3 pr-12 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-sky-400 focus:outline-none transition"
             />
-            <button
-              @click="sendVerifyEmail"
-              :disabled="isSendingCode"
-              class="flex items-center gap-1.5 px-4 py-3 bg-sky-50 text-sky-600 border border-sky-200 rounded-xl text-sm font-medium hover:bg-sky-100 transition disabled:opacity-50 whitespace-nowrap"
-            >
-              <Loader2 v-if="isSendingCode" class="w-3.5 h-3.5 animate-spin" />
-              <Mail v-else class="w-3.5 h-3.5" />
-              {{ codeSent ? '재발송' : '코드 발송' }}
+            <button type="button" @click="showCurrentPw = !showCurrentPw"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
+              <EyeOff v-if="showCurrentPw" class="w-5 h-5" />
+              <Eye v-else class="w-5 h-5" />
             </button>
           </div>
-          <div v-if="codeSent" class="mt-1 text-amber-500 font-mono text-xs">
-            {{ codeTimerLabel }} 내에 인증 코드를 입력하세요
-          </div>
-        </div>
-
-        <!-- 인증 코드 입력 -->
-        <div v-if="codeSent">
-          <label class="block text-sm font-medium text-slate-700 mb-1.5">인증 코드</label>
-          <input
-            v-model="verificationCode"
-            type="text"
-            maxlength="6"
-            placeholder="이메일로 받은 6자리 코드"
-            class="w-full border border-sky-100 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-sky-400 focus:outline-none transition"
-          />
         </div>
 
         <!-- 새 비밀번호 -->
@@ -297,8 +238,8 @@ async function handleDelete() {
             <input
               v-model="newPassword"
               :type="showNewPw ? 'text' : 'password'"
-              class="w-full border border-sky-100 rounded-xl px-4 py-3 pr-12 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-sky-400 focus:outline-none transition"
               placeholder="새 비밀번호 (8자 이상)"
+              class="w-full border border-sky-100 rounded-xl px-4 py-3 pr-12 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-sky-400 focus:outline-none transition"
             />
             <button type="button" @click="showNewPw = !showNewPw"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
@@ -306,7 +247,23 @@ async function handleDelete() {
               <Eye v-else class="w-5 h-5" />
             </button>
           </div>
-          <p v-if="newPassword.length > 0 && newPassword.length < 8" class="text-xs text-slate-400 mt-1.5">8자 이상 입력해주세요</p>
+          <div v-if="newPassword.length > 0" class="mt-2 space-y-1">
+            <p class="flex items-center gap-1.5 text-xs" :class="pwRules.minLength ? 'text-emerald-500' : 'text-slate-400'">
+              <Check v-if="pwRules.minLength" class="w-3.5 h-3.5" />
+              <span v-else class="w-3.5 h-3.5 flex items-center justify-center font-bold">·</span>
+              8자 이상
+            </p>
+            <p class="flex items-center gap-1.5 text-xs" :class="pwRules.hasUpper ? 'text-emerald-500' : 'text-slate-400'">
+              <Check v-if="pwRules.hasUpper" class="w-3.5 h-3.5" />
+              <span v-else class="w-3.5 h-3.5 flex items-center justify-center font-bold">·</span>
+              대문자 포함 (A-Z)
+            </p>
+            <p class="flex items-center gap-1.5 text-xs" :class="pwRules.hasSpecial ? 'text-emerald-500' : 'text-slate-400'">
+              <Check v-if="pwRules.hasSpecial" class="w-3.5 h-3.5" />
+              <span v-else class="w-3.5 h-3.5 flex items-center justify-center font-bold">·</span>
+              특수문자 포함 (!@#$% 등)
+            </p>
+          </div>
         </div>
 
         <!-- 새 비밀번호 확인 -->
@@ -316,9 +273,9 @@ async function handleDelete() {
             <input
               v-model="confirmPassword"
               :type="showConfirmPw ? 'text' : 'password'"
-              class="w-full border border-sky-100 rounded-xl px-4 py-3 pr-12 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-sky-400 focus:outline-none transition"
-              :class="confirmPassword && !passwordsMatch ? 'border-red-300 focus:ring-red-300' : ''"
               placeholder="비밀번호 재입력"
+              class="w-full border border-sky-100 rounded-xl px-4 py-3 pr-12 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-sky-400 focus:outline-none transition"
+              :class="confirmPassword && passwordsMatch === false ? 'border-red-300 focus:ring-red-300' : ''"
             />
             <button type="button" @click="showConfirmPw = !showConfirmPw"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">

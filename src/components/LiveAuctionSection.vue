@@ -1,45 +1,56 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight } from 'lucide-vue-next'
+import { ArrowRight, Loader2, Gavel } from 'lucide-vue-next'
+import { auctionApi, type AuctionResponse } from '@/api/auction.api'
 
 const router = useRouter()
 
-interface Auction {
-  id: number
-  name: string
-  breeder: string
-  currentBid: string
-  timeLeft: number
-}
+const auctions = ref<AuctionResponse[]>([])
+const isLoading = ref(true)
+const now = ref(Date.now())
 
-const auctions = ref<Auction[]>([
-  { id: 1, name: 'L-333 킹로얄 플레코', breeder: '플레코마스터', currentBid: '₩85,000', timeLeft: 8073 },
-  { id: 2, name: '슈퍼레드 아로와나', breeder: '아로와나팜', currentBid: '₩2,500,000', timeLeft: 12453 },
-  { id: 3, name: '블루다이아몬드 디스커스', breeder: '디스커스월드', currentBid: '₩180,000', timeLeft: 5234 },
-  { id: 4, name: '크리스탈 레드 쉬림프 S급', breeder: '새우천국', currentBid: '₩65,000', timeLeft: 3412 },
-])
+let clockInterval: ReturnType<typeof setInterval>
+
+// endAt ISO 문자열로부터 남은 초 계산
+function secondsLeft(endAt: string) {
+  return Math.max(0, Math.floor((new Date(endAt).getTime() - now.value) / 1000))
+}
 
 const formatTime = (seconds: number) => {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = seconds % 60
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  if (h > 0) return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-let interval: number
+const formatPrice = (n: number) => '₩' + n.toLocaleString()
 
-onMounted(() => {
-  interval = setInterval(() => {
-    auctions.value = auctions.value.map(auction => ({
-      ...auction,
-      timeLeft: Math.max(0, auction.timeLeft - 1)
-    }))
-  }, 1000)
+// ACTIVE 우선 표시, 없으면 SCHEDULED 표시
+const displayAuctions = computed(() => {
+  const active = auctions.value.filter(a => a.status === 'ACTIVE')
+  return active.length > 0 ? active : auctions.value.filter(a => a.status === 'SCHEDULED')
+})
+
+const isScheduled = computed(() => {
+  return auctions.value.filter(a => a.status === 'ACTIVE').length === 0
+    && auctions.value.filter(a => a.status === 'SCHEDULED').length > 0
+})
+
+onMounted(async () => {
+  try {
+    auctions.value = await auctionApi.getList()
+  } catch {
+    auctions.value = []
+  } finally {
+    isLoading.value = false
+  }
+  clockInterval = setInterval(() => { now.value = Date.now() }, 1000)
 })
 
 onUnmounted(() => {
-  clearInterval(interval)
+  clearInterval(clockInterval)
 })
 </script>
 
@@ -49,8 +60,8 @@ onUnmounted(() => {
       <!-- Section Header -->
       <div class="flex items-center justify-between mb-8">
         <h2 class="text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-3">
-          <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse-red"></span>
-          실시간 경매
+          <span v-if="!isScheduled" class="w-3 h-3 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
+          {{ isScheduled ? '예정된 경매' : '실시간 경매' }}
         </h2>
         <button
           @click="router.push('/auction')"
@@ -60,49 +71,91 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Auction Cards -->
-      <div class="flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide">
+      <!-- 로딩 -->
+      <div v-if="isLoading" class="flex justify-center py-16">
+        <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+      </div>
+
+      <!-- 빈 상태 -->
+      <div
+        v-else-if="displayAuctions.length === 0"
+        class="text-center py-16 bg-white rounded-2xl border border-sky-100"
+      >
+        <Gavel class="w-12 h-12 text-sky-200 mx-auto mb-3" />
+        <p class="text-slate-400 font-medium mb-2">현재 진행 중인 경매가 없습니다</p>
+        <p class="text-slate-300 text-sm">곧 새로운 경매가 시작됩니다</p>
+      </div>
+
+      <!-- 경매 카드 목록 -->
+      <div v-else class="flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide">
         <div
-          v-for="auction in auctions"
+          v-for="auction in displayAuctions.slice(0, 6)"
           :key="auction.id"
-          class="flex-shrink-0 w-72 bg-white rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all duration-200 hover:scale-[1.02] snap-start"
+          class="flex-shrink-0 w-72 bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-200 hover:scale-[1.02] snap-start cursor-pointer"
+          @click="router.push(`/auction/${auction.id}`)"
         >
-          <!-- Image Placeholder with Live Badge -->
-          <div class="relative w-full aspect-square rounded-xl bg-gradient-to-br from-sky-200 to-teal-300 mb-4 flex items-center justify-center">
-            <span class="text-6xl">🐠</span>
-            <div class="absolute top-3 left-3 flex items-center gap-1.5 bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-              <span class="w-2 h-2 bg-white rounded-full animate-pulse-red"></span>
-              LIVE
+          <!-- 이미지 -->
+          <div class="relative w-full aspect-square bg-gradient-to-br from-sky-100 to-teal-200">
+            <img
+              v-if="auction.imageUrls.length > 0"
+              :src="auction.imageUrls[0]"
+              :alt="auction.productName"
+              class="w-full h-full object-cover"
+            />
+            <div v-else class="w-full h-full flex items-center justify-center text-6xl">🐠</div>
+
+            <!-- LIVE / 예정 배지 -->
+            <div
+              class="absolute top-3 left-3 flex items-center gap-1.5 text-white text-xs font-bold px-2.5 py-1 rounded-full"
+              :class="auction.status === 'ACTIVE' ? 'bg-red-500' : 'bg-sky-500'"
+            >
+              <span v-if="auction.status === 'ACTIVE'" class="w-2 h-2 bg-white rounded-full animate-pulse" />
+              {{ auction.status === 'ACTIVE' ? 'LIVE' : '예정' }}
+            </div>
+
+            <!-- 입찰 수 -->
+            <div v-if="auction.bidCount > 0" class="absolute top-3 right-3 bg-black/40 backdrop-blur-sm text-white text-xs font-semibold px-2 py-1 rounded-full">
+              {{ auction.bidCount }}명 입찰
             </div>
           </div>
 
-          <!-- Content -->
-          <div class="space-y-3">
-            <h3 class="font-semibold text-slate-800">{{ auction.name }}</h3>
-            
+          <!-- 컨텐츠 -->
+          <div class="p-5 space-y-3">
             <div class="flex items-center gap-2">
-              <div class="w-6 h-6 rounded-full bg-gradient-to-br from-sky-300 to-teal-400"></div>
-              <span class="text-sm text-slate-400">by @{{ auction.breeder }}</span>
+              <div class="w-6 h-6 rounded-full bg-gradient-to-br from-sky-300 to-teal-400 flex-shrink-0" />
+              <span class="text-xs text-slate-400 truncate">@{{ auction.sellerNickName }}</span>
             </div>
+
+            <h3 class="font-semibold text-slate-800 line-clamp-2 leading-snug">{{ auction.productName }}</h3>
 
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs text-slate-400">현재가</p>
-                <p class="text-lg font-bold text-sky-600">{{ auction.currentBid }}</p>
+                <p class="text-xs text-slate-400">{{ auction.status === 'ACTIVE' ? '현재가' : '시작가' }}</p>
+                <p class="text-lg font-black text-sky-600">
+                  {{ formatPrice(auction.status === 'ACTIVE' ? auction.currentPrice : auction.startPrice) }}
+                </p>
               </div>
               <div class="text-right">
-                <p class="text-xs text-slate-400">남은시간</p>
-                <p class="text-sm font-mono text-amber-500 font-semibold">
-                  ⏱ {{ formatTime(auction.timeLeft) }}
+                <p class="text-xs text-slate-400">{{ auction.status === 'ACTIVE' ? '남은시간' : '시작까지' }}</p>
+                <p
+                  class="text-sm font-mono font-semibold"
+                  :class="auction.status === 'ACTIVE'
+                    ? secondsLeft(auction.endAt) < 300 ? 'text-red-500' : 'text-amber-500'
+                    : 'text-sky-500'"
+                >
+                  {{ formatTime(secondsLeft(auction.status === 'ACTIVE' ? auction.endAt : auction.startAt)) }}
                 </p>
               </div>
             </div>
 
             <button
-              @click="router.push(`/auction/${auction.id}`)"
-              class="w-full py-3 bg-sky-500 text-white font-semibold rounded-xl hover:bg-sky-600 transition-colors"
+              class="w-full py-3 font-semibold rounded-xl transition-colors text-sm"
+              :class="auction.status === 'ACTIVE'
+                ? 'bg-sky-500 hover:bg-sky-600 text-white'
+                : 'bg-sky-50 hover:bg-sky-100 text-sky-600 border border-sky-200'"
+              @click.stop="router.push(`/auction/${auction.id}`)"
             >
-              입찰하기
+              {{ auction.status === 'ACTIVE' ? '입찰하기' : '알림 신청' }}
             </button>
           </div>
         </div>
@@ -112,11 +165,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
