@@ -71,4 +71,17 @@ export const auctionApi = {
     api.post<{ success: boolean; data: AuctionResponse }>('/auctions', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(unwrap),
+
+  isWatching: (auctionId: number) =>
+    api.get<{ success: boolean; data: { watching: boolean } }>(`/auctions/${auctionId}/watch`)
+      .then(res => res.data.data.watching),
+
+  watchAuction: (auctionId: number) =>
+    api.post(`/auctions/${auctionId}/watch`),
+
+  unwatchAuction: (auctionId: number) =>
+    api.delete(`/auctions/${auctionId}/watch`),
+
+  getMyWatches: () =>
+    api.get<{ success: boolean; data: AuctionResponse[] }>('/auctions/me/watches').then(unwrap),
 }

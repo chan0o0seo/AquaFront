@@ -51,18 +51,21 @@ interface Product {
 
 interface Review {
   id: number
-  reviewerId: string
+  reviewerId: string | null
   reviewerNickName: string
   rating: number
-  content: string
+  content: string | null
   imageUrls: string[]
   createdAt: string
+  secret: boolean
+  masked: boolean
 }
 
 interface ReviewForm {
   rating: number
   content: string
   imageUrls: string[]
+  secret: boolean
 }
 
 const route = useRoute()
@@ -226,6 +229,7 @@ const handleReviewSubmit = async (form: ReviewForm) => {
       rating: form.rating,
       content: form.content,
       imageUrls: form.imageUrls,
+      secret: form.secret,
     })
     reviews.value.unshift(newReview)
     canReview.value = false
@@ -611,10 +615,9 @@ watch(
         <div v-show="activeTab === 'description'">
           <div
               v-if="product?.description"
-              class="prose max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
-          >
-            {{ product.description }}
-          </div>
+              class="tiptap prose max-w-none text-slate-700 leading-relaxed"
+              v-html="product.description"
+          />
           <p v-else class="text-slate-400 text-center py-12">
             등록된 상품 설명이 없습니다
           </p>

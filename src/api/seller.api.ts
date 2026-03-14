@@ -208,4 +208,27 @@ export const sellerApi = {
   getStats: () =>
     api.get<{ success: boolean; data: SellerStats; message: string }>('/seller/stats')
       .then(unwrap),
+
+  // ── 판매자 주문 관리 ──────────────────────────────
+  // GET /api/seller/orders?status=
+  getSellerOrders: (status?: string) =>
+    api.get<{ success: boolean; data: import('./order.api').OrderResponse[]; message: string }>(
+      '/seller/orders', { params: status ? { status } : {} }
+    ).then(unwrap),
+
+  // PATCH /api/seller/orders/:orderId/ship — 송장 등록 → 배송중
+  shipOrder: (orderId: number, body: { courier: string; trackingNumber: string }) =>
+    api.patch<{ success: boolean; data: import('./order.api').OrderResponse; message: string }>(
+      `/seller/orders/${orderId}/ship`, body
+    ).then(unwrap),
+
+  // PATCH /api/seller/orders/:orderId/deliver — 배송완료 처리
+  deliverOrder: (orderId: number) =>
+    api.patch<{ success: boolean; data: import('./order.api').OrderResponse; message: string }>(
+      `/seller/orders/${orderId}/deliver`
+    ).then(unwrap),
+
+  // PATCH /api/seller/orders/:orderId/cancel — 판매자 취소
+  cancelSellerOrder: (orderId: number) =>
+    api.patch(`/seller/orders/${orderId}/cancel`),
 }

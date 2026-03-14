@@ -25,6 +25,7 @@ export interface OrderResponse {
   orderId: number
   status: OrderStatus
   items: OrderItemResponse[]
+  buyerNickName: string
   recipientName: string
   phoneNumber: string
   zipCode: string
@@ -32,6 +33,8 @@ export interface OrderResponse {
   detailAddress: string | null
   totalAmount: number
   shippingFee: number
+  courier: string | null
+  trackingNumber: string | null
   createdAt: string
 }
 

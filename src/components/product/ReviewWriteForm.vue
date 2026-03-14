@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
-import { Star, Plus, X } from 'lucide-vue-next'
+import { Star, Plus, X, Lock } from 'lucide-vue-next'
 
 interface ReviewForm {
   rating: number
   content: string
   imageUrls: string[]
+  secret: boolean
 }
 
 interface Props {
@@ -28,7 +29,8 @@ const emit = defineEmits<{
 const form = reactive<ReviewForm>({
   rating: 0,
   content: '',
-  imageUrls: []
+  imageUrls: [],
+  secret: false,
 })
 
 const hoverRating = ref(0)
@@ -41,6 +43,7 @@ watch(
       form.rating = data.rating
       form.content = data.content
       form.imageUrls = [...data.imageUrls]
+      form.secret = data.secret
     }
   },
   { immediate: true }
@@ -88,6 +91,7 @@ const handleCancel = () => {
   form.rating = 0
   form.content = ''
   form.imageUrls = []
+  form.secret = false
   emit('cancel')
 }
 </script>
@@ -177,6 +181,25 @@ const handleCancel = () => {
       </label>
     </div>
     
+    <!-- 비밀 리뷰 토글 -->
+    <label class="flex items-center gap-2 mt-4 cursor-pointer select-none w-fit">
+      <button
+        type="button"
+        @click="form.secret = !form.secret"
+        class="w-10 h-5 rounded-full transition-colors relative flex-shrink-0"
+        :class="form.secret ? 'bg-sky-500' : 'bg-slate-200'"
+      >
+        <span
+          class="absolute top-0.5 left-0 w-4 h-4 rounded-full bg-white shadow transition-transform"
+          :class="form.secret ? 'translate-x-5' : 'translate-x-0.5'"
+        />
+      </button>
+      <Lock class="w-3.5 h-3.5" :class="form.secret ? 'text-sky-500' : 'text-slate-400'" />
+      <span class="text-sm" :class="form.secret ? 'text-sky-600 font-medium' : 'text-slate-500'">
+        비밀 리뷰 (판매자와 나만 볼 수 있어요)
+      </span>
+    </label>
+
     <!-- Buttons -->
     <div class="flex gap-3 mt-4">
       <button

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Gavel, Trophy, Clock, Loader2 } from 'lucide-vue-next'
-import { auctionApi, type MyBidResponse } from '@/api'
+import { Gavel, Trophy, Clock, Loader2, Bell } from 'lucide-vue-next'
+import { auctionApi, type MyBidResponse, type AuctionResponse } from '@/api'
 
 const router = useRouter()
 
@@ -11,15 +11,19 @@ const activeFilter = ref<Filter>('전체')
 const filterOptions: Filter[] = ['전체', '입찰중', '낙찰', '패찰']
 
 const myBids = ref<MyBidResponse[]>([])
+const myWatches = ref<AuctionResponse[]>([])
 const isLoading = ref(true)
 const now = ref(Date.now())
 
 let timer: ReturnType<typeof setInterval>
 onMounted(async () => {
   try {
-    myBids.value = await auctionApi.getMyBids()
+    ;[myBids.value, myWatches.value] = await Promise.all([
+      auctionApi.getMyBids(),
+      auctionApi.getMyWatches(),
+    ])
   } catch (e) {
-    console.error('Failed to load my bids', e)
+    console.error('Failed to load auction data', e)
   } finally {
     isLoading.value = false
   }
@@ -73,6 +77,27 @@ const formatDate = (iso: string) => {
 const totalWon = computed(() =>
   wonBids.value.reduce((sum, b) => sum + b.currentPrice, 0)
 )
+
+// 알림 신청한 예정/진행 경매만 (종료된 건 제외)
+const activeWatches = computed(() =>
+  myWatches.value.filter(w => w.status === 'SCHEDULED' || w.status === 'ACTIVE')
+)
+
+const unwatchAuction = async (auctionId: number) => {
+  try {
+    await auctionApi.unwatchAuction(auctionId)
+    myWatches.value = myWatches.value.filter(w => w.id !== auctionId)
+  } catch (e) {
+    console.error('Failed to unwatch', e)
+  }
+}
+
+const formatStartAt = (iso: string) => {
+  try {
+    const d = new Date(iso)
+    return `${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} 시작`
+  } catch { return iso.slice(0, 16) }
+}
 </script>
 
 <template>
@@ -102,7 +127,7 @@ const totalWon = computed(() =>
 
     <template v-else>
       <!-- Summary Strip -->
-      <div class="grid grid-cols-3 gap-3 mb-6">
+      <div class="grid grid-cols-4 gap-3 mb-6">
         <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
           <div class="text-2xl font-black text-sky-600">{{ activeBids.length }}건</div>
           <div class="text-xs text-slate-400 mt-0.5">입찰 중</div>
@@ -110,6 +135,10 @@ const totalWon = computed(() =>
         <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
           <div class="text-2xl font-black text-emerald-600">{{ wonBids.length }}건</div>
           <div class="text-xs text-slate-400 mt-0.5">낙찰</div>
+        </div>
+        <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
+          <div class="text-2xl font-black text-amber-500">{{ activeWatches.length }}건</div>
+          <div class="text-xs text-slate-400 mt-0.5">알림 신청</div>
         </div>
         <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100 text-center">
           <div class="text-2xl font-black text-slate-900">
@@ -246,6 +275,61 @@ const totalWon = computed(() =>
           </div>
         </div>
       </template>
+
+      <!-- 알림 신청한 경매 -->
+      <div v-if="activeWatches.length > 0" class="mt-8">
+        <div class="flex items-center gap-2 text-sm font-black text-slate-700 mb-3">
+          <Bell class="w-4 h-4 text-amber-500" />
+          알림 신청한 경매
+        </div>
+        <div class="space-y-3">
+          <div
+            v-for="item in activeWatches"
+            :key="item.id"
+            class="bg-white rounded-2xl border border-sky-100 p-5 cursor-pointer hover:shadow-md hover:border-sky-200 transition-all"
+          >
+            <div class="flex items-center gap-4">
+              <!-- Thumbnail -->
+              <div
+                class="w-16 h-16 rounded-xl flex-shrink-0 overflow-hidden bg-gradient-to-br from-sky-100 to-teal-200"
+                @click="router.push(`/auction/${item.id}`)"
+              >
+                <img
+                  v-if="item.imageUrls.length > 0"
+                  :src="item.imageUrls[0]"
+                  :alt="item.productName"
+                  class="w-full h-full object-cover"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center text-2xl">🐠</div>
+              </div>
+              <div class="flex-1 min-w-0" @click="router.push(`/auction/${item.id}`)">
+                <div class="flex items-center gap-2 mb-1">
+                  <span
+                    class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    :class="item.status === 'ACTIVE'
+                      ? 'bg-red-100 text-red-600'
+                      : 'bg-sky-100 text-sky-600'"
+                  >
+                    {{ item.status === 'ACTIVE' ? 'LIVE' : '예정' }}
+                  </span>
+                </div>
+                <div class="font-semibold text-slate-800 text-sm line-clamp-1">{{ item.productName }}</div>
+                <div class="text-xs text-slate-400 mt-0.5">
+                  {{ item.sellerNickName }} ·
+                  <span v-if="item.status === 'SCHEDULED'">{{ formatStartAt(item.startAt) }}</span>
+                  <span v-else>시작가 ₩{{ item.startPrice.toLocaleString() }}</span>
+                </div>
+              </div>
+              <button
+                @click.stop="unwatchAuction(item.id)"
+                class="flex-shrink-0 text-xs text-slate-400 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50 border border-slate-100"
+              >
+                알림 취소
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>

@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, X, Loader2 } from 'lucide-vue-next'
+import { ArrowLeft, X, Loader2, ChevronLeft, ChevronRight, Star, Tag } from 'lucide-vue-next'
 import ProductTypeSelector from '@/components/seller/ProductTypeSelector.vue'
 import ProductImageUploader from '@/components/seller/ProductImageUploader.vue'
 import BioSpecsSection from '@/components/seller/BioSpecsSection.vue'
 import TagInput from '@/components/seller/TagInput.vue'
 import ProductFormFooter from '@/components/seller/ProductFormFooter.vue'
 import { sellerApi, productApi, uploadFiles } from '@/api'
+import RichTextEditor from '@/components/seller/RichTextEditor.vue'
 
 type ProductType = 'FISH' | 'INVERTEBRATE' | 'PLANT' | 'EQUIPMENT' | 'FOOD' | 'ACCESSORY'
 
@@ -207,25 +208,49 @@ const handleSubmit = async () => {
   }
 }
 
-// Save draft handler
-const handleSaveDraft = () => {
-  // Implement draft saving to localStorage or API
-  alert('임시저장 기능은 준비 중입니다.')
+// Preview
+const showPreview = ref(false)
+const previewImageIndex = ref(0)
+const previewImageUrls = ref<string[]>([])
+const objectUrls = ref<string[]>([])
+
+const typeLabel: Record<string, string> = {
+  FISH: '어류', INVERTEBRATE: '무척추', PLANT: '수초',
+  EQUIPMENT: '용품', FOOD: '사료', ACCESSORY: '악세서리',
+}
+const difficultyLabel: Record<string, string> = {
+  BEGINNER: '초급', INTERMEDIATE: '중급', ADVANCED: '고급',
+}
+const waterTypeLabel: Record<string, string> = {
+  FRESHWATER: '민물', SALTWATER: '해수', BRACKISH: '기수',
 }
 
-// Preview handler
-const handlePreview = () => {
-  // Implement preview modal
-  alert('미리보기 기능은 준비 중입니다.')
+function openPreview() {
+  // Revoke previous object URLs
+  objectUrls.value.forEach(u => URL.revokeObjectURL(u))
+  objectUrls.value = []
+
+  const newObjUrls = images.value.map(f => {
+    const u = URL.createObjectURL(f)
+    objectUrls.value.push(u)
+    return u
+  })
+  previewImageUrls.value = [...existingImageUrls.value, ...newObjUrls]
+  previewImageIndex.value = 0
+  showPreview.value = true
 }
 
-// Go back
-const goBack = () => {
-  router.push('/mypage/seller')
-}
+function closePreview() { showPreview.value = false }
+
+onBeforeUnmount(() => {
+  objectUrls.value.forEach(u => URL.revokeObjectURL(u))
+})
+
+const goBack = () => router.push('/mypage/seller')
 </script>
 
 <template>
+  <div>
   <main class="min-h-screen bg-sky-50 pt-24 pb-16">
     <div class="max-w-2xl mx-auto px-6">
       <!-- Back Button -->
@@ -317,20 +342,7 @@ const goBack = () => {
           <!-- Description -->
           <div class="mt-5">
             <label class="block text-sm font-semibold text-slate-700 mb-2">상품 설명</label>
-            <div class="relative">
-              <textarea
-                v-model="form.description"
-                rows="6"
-                maxlength="2000"
-                placeholder="상품 특징, 사육 환경 권장 사항, 주의사항 등을 자세히 써주시면 판매에 도움이 됩니다."
-                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800
-                       placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
-                       focus:border-transparent transition-all duration-150 resize-none"
-              ></textarea>
-              <span class="absolute right-3 bottom-3 text-xs text-slate-400">
-                {{ form.description.length }}/2000
-              </span>
-            </div>
+            <RichTextEditor v-model="form.description" />
           </div>
         </div>
 
@@ -484,11 +496,139 @@ const goBack = () => {
           :is-valid="isFormValid"
           :is-submitting="isSubmitting"
           :is-edit-mode="isEditMode"
-          @save-draft="handleSaveDraft"
-          @preview="handlePreview"
+          @preview="openPreview"
           @submit="handleSubmit"
         />
       </div>
     </div>
   </main>
+
+  <!-- Preview Modal -->
+  <Teleport to="body">
+    <div
+      v-if="showPreview"
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8 px-4"
+      @click.self="closePreview"
+    >
+      <div class="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold text-sky-600 bg-sky-50 px-2.5 py-1 rounded-full">미리보기</span>
+            <span class="text-sm text-slate-400">실제 구매자 화면과 비슷하게 표시됩니다</span>
+          </div>
+          <button @click="closePreview" class="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+            <X class="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <!-- Image Carousel -->
+        <div class="relative aspect-square bg-gradient-to-br from-sky-100 to-teal-200">
+          <template v-if="previewImageUrls.length > 0">
+            <img
+              :src="previewImageUrls[previewImageIndex]"
+              alt="미리보기 이미지"
+              class="w-full h-full object-cover"
+            />
+            <!-- Nav arrows -->
+            <template v-if="previewImageUrls.length > 1">
+              <button
+                @click="previewImageIndex = (previewImageIndex - 1 + previewImageUrls.length) % previewImageUrls.length"
+                class="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow hover:bg-white transition-colors"
+              >
+                <ChevronLeft class="w-5 h-5 text-slate-700" />
+              </button>
+              <button
+                @click="previewImageIndex = (previewImageIndex + 1) % previewImageUrls.length"
+                class="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow hover:bg-white transition-colors"
+              >
+                <ChevronRight class="w-5 h-5 text-slate-700" />
+              </button>
+              <!-- Dots -->
+              <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                <span
+                  v-for="(_, i) in previewImageUrls"
+                  :key="i"
+                  class="w-2 h-2 rounded-full transition-colors"
+                  :class="i === previewImageIndex ? 'bg-white' : 'bg-white/40'"
+                />
+              </div>
+            </template>
+          </template>
+          <div v-else class="w-full h-full flex items-center justify-center text-8xl">🐟</div>
+
+          <!-- Type badge -->
+          <div v-if="form.productType" class="absolute top-3 left-3 bg-sky-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+            {{ typeLabel[form.productType] ?? form.productType }}
+          </div>
+        </div>
+
+        <!-- Info -->
+        <div class="p-6 space-y-4">
+          <!-- Name & price -->
+          <div>
+            <h2 class="text-xl font-black text-slate-900 leading-tight">
+              {{ form.name || '(상품명 없음)' }}
+            </h2>
+            <div class="flex items-baseline gap-2 mt-2">
+              <span class="text-2xl font-black text-sky-600">
+                ₩{{ (form.price ?? 0).toLocaleString() }}
+              </span>
+              <span v-if="form.shippingFee === 0" class="text-sm text-emerald-500 font-semibold">무료배송</span>
+              <span v-else-if="form.shippingFee" class="text-sm text-slate-400">배송비 ₩{{ form.shippingFee.toLocaleString() }}</span>
+            </div>
+          </div>
+
+          <!-- Star placeholder -->
+          <div class="flex items-center gap-1 text-slate-300 text-sm">
+            <Star class="w-4 h-4" fill="currentColor" />
+            <Star class="w-4 h-4" fill="currentColor" />
+            <Star class="w-4 h-4" fill="currentColor" />
+            <Star class="w-4 h-4" fill="currentColor" />
+            <Star class="w-4 h-4" fill="currentColor" />
+            <span class="ml-1 text-slate-400 text-xs">등록 후 리뷰가 쌓입니다</span>
+          </div>
+
+          <!-- Bio specs -->
+          <div v-if="isBioType && (form.waterType || form.difficulty || form.waterTemperatureMin)" class="flex flex-wrap gap-2">
+            <span v-if="form.waterType" class="text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full font-medium">
+              {{ waterTypeLabel[form.waterType] }}
+            </span>
+            <span v-if="form.difficulty" class="text-xs bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full font-medium">
+              {{ difficultyLabel[form.difficulty] }}
+            </span>
+            <span v-if="form.waterTemperatureMin || form.waterTemperatureMax" class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">
+              {{ form.waterTemperatureMin ?? '?' }}~{{ form.waterTemperatureMax ?? '?' }}°C
+            </span>
+            <span v-if="form.phMin || form.phMax" class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">
+              pH {{ form.phMin ?? '?' }}~{{ form.phMax ?? '?' }}
+            </span>
+          </div>
+
+          <!-- Tags -->
+          <div v-if="tags.length > 0" class="flex flex-wrap gap-1.5">
+            <span
+              v-for="tag in tags"
+              :key="tag"
+              class="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full"
+            >
+              <Tag class="w-3 h-3" /> {{ tag }}
+            </span>
+          </div>
+
+          <!-- Description -->
+          <div class="border-t border-slate-100 pt-4">
+            <h3 class="text-sm font-bold text-slate-700 mb-3">상품 설명</h3>
+            <div
+              v-if="form.description && form.description !== '<p></p>'"
+              class="tiptap text-slate-700 leading-relaxed"
+              v-html="form.description"
+            />
+            <p v-else class="text-slate-400 text-sm italic">상품 설명이 입력되지 않았습니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+  </div>
 </template>

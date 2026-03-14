@@ -10,6 +10,8 @@ export { auctionApi } from './auction.api'
 export { sellerApi } from './seller.api'
 export { s3Api, uploadFile, uploadFiles } from './s3.api'
 export { communityApi } from './community.api'
+export { notificationApi } from './notification.api'
+export type { NotificationItem, NotificationType as NotificationTypeEnum } from './notification.api'
 export type { BoardCategoryResponse, PostSummaryResponse, PostDetailResponse, CommentResponse } from './community.api'
 
 export type { ApiResponse, PageResponse } from './types'

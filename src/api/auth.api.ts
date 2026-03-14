@@ -93,5 +93,21 @@ export const authApi = {
 
   withdraw: async (body: WithdrawRequest) => {
     await api.delete('/members/me', { data: body })
-  }
+  },
+
+  // POST /api/auth/find-email — 이름+전화번호로 이메일 찾기 (마스킹)
+  findEmail: (name: string, phoneNumber: string): Promise<string> =>
+    api.post<{ success: boolean; data: string; message: string }>(
+      '/auth/find-email', { name, phoneNumber }
+    ).then(unwrap),
+
+  // POST /api/auth/password/send-code — 비밀번호 재설정 코드 발송
+  sendPasswordResetCode: async (email: string) => {
+    await api.post('/auth/password/send-code', { email })
+  },
+
+  // POST /api/auth/password/reset — 코드 검증 + 새 비밀번호 설정
+  resetPassword: async (email: string, verificationCode: string, newPassword: string) => {
+    await api.post('/auth/password/reset', { email, verificationCode, newPassword })
+  },
 }

@@ -42,9 +42,13 @@ export const memberApi = {
   sendPasswordVerifyEmail: () =>
     api.post('/members/me/password/verify-email'),
 
-  // PATCH /api/members/me/password — 비밀번호 변경
+  // PATCH /api/members/me/password — 비밀번호 변경 (이메일 코드 방식)
   changePassword: (body: ChangePasswordRequest) =>
     api.patch('/members/me/password', body),
+
+  // PATCH /api/members/me/password/direct — 비밀번호 변경 (현재 비밀번호 방식)
+  changePasswordDirect: (currentPassword: string, newPassword: string) =>
+    api.patch('/members/me/password/direct', { currentPassword, newPassword }),
 
   // ── 배송지 ────────────────────────────────────────
   // GET /api/members/me/addresses

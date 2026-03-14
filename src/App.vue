@@ -1,6 +1,22 @@
 <script setup lang="ts">
+import { watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import AppNavbar from './components/AppNavbar.vue'
 import AppFooter from './components/AppFooter.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
+
+const { isLoggedIn } = storeToRefs(useAuthStore())
+const notificationStore = useNotificationStore()
+
+watch(isLoggedIn, (loggedIn) => {
+  if (loggedIn) {
+    notificationStore.load()
+    notificationStore.connect()
+  } else {
+    notificationStore.disconnect()
+  }
+}, { immediate: true })
 </script>
 
 <template>
