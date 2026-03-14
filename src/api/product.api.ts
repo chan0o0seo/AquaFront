@@ -133,4 +133,16 @@ export const productApi = {
     api.get<{ success: boolean; data: ProductSummary[]; message: string }>(
       '/members/me/wishlist'
     ).then(unwrap),
+
+  // GET /api/products/type/{productType} — 타입별 상품 목록
+  searchByType: (productType: ProductType, params?: { page?: number; size?: number; sort?: string }) =>
+    api.get<{ success: boolean; data: ProductSummary[]; message: string }>(
+      `/products/type/${productType}`, { params }
+    ).then(unwrap),
+
+  // GET /api/products/:id/wishlist/count — 찜 수 조회
+  getWishlistCount: (productId: number) =>
+    api.get<{ success: boolean; data: number; message: string }>(
+      `/products/${productId}/wishlist/count`
+    ).then(unwrap),
 }

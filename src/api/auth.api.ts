@@ -87,6 +87,13 @@ export const authApi = {
     api.get<{ success: boolean; data: AuthMember; message: string }>('/members/me')
       .then(unwrap),
 
+  // GET /api/auth/email/check?email=... → true: 중복, false: 사용가능
+  checkEmail: (email: string, signal?: AbortSignal) =>
+    api.get<{ success: boolean; data: boolean; message: string }>('/auth/email/check', {
+      params: { email },
+      signal,
+    }).then(unwrap),
+
   updateNickName: async (body: NicknameUpdateRequest) => {
     await api.patch('/members/me/nick', body)
   },
