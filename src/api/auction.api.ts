@@ -71,4 +71,8 @@ export const auctionApi = {
     api.post<{ success: boolean; data: AuctionResponse }>('/auctions', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(unwrap),
+
+  // DELETE /api/auctions/{auctionId} — 경매 삭제 (SCHEDULED 상태만 가능)
+  cancelAuction: (auctionId: number) =>
+    api.delete(`/auctions/${auctionId}`),
 }

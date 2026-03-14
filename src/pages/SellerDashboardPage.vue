@@ -3,19 +3,21 @@ import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard, Package, Plus, Gavel, TrendingUp,
-  Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy
+  Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy,
+  Banknote, CreditCard, Download, Calendar
 } from 'lucide-vue-next'
 import SellerStatsGrid from '@/components/seller/SellerStatsGrid.vue'
 import SellerProductList from '@/components/seller/SellerProductList.vue'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-import { sellerApi, auctionApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
+import { sellerApi, auctionApi, settlementApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
+import type { SettlementResponse, SettlementAccountResponse, SettlementAccountRequest, MonthlySettlementReport } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
 const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
-const activeTab = ref<'home' | 'products' | 'auctions'>('home')
+const activeTab = ref<'home' | 'products' | 'auctions' | 'settlements'>('home')
 
 // 내 경매 목록
 const myAuctions = ref<AuctionResponse[]>([])
@@ -85,11 +87,100 @@ const statusText = (status: string) => {
   return '삭제됨'
 }
 
+// ── 정산 ──────────────────────────────────────────
+const settlements = ref<SettlementResponse[]>([])
+const settlementAccount = ref<SettlementAccountResponse | null>(null)
+const monthlyReport = ref<MonthlySettlementReport | null>(null)
+const isLoadingSettlements = ref(false)
+const settlementAccountLoaded = ref(false)
+
+const now = new Date()
+const reportYear = ref(now.getFullYear())
+const reportMonth = ref(now.getMonth() + 1)
+
+const showAccountForm = ref(false)
+const isSavingAccount = ref(false)
+const accountForm = ref<SettlementAccountRequest>({ bankName: '', accountNumber: '', accountHolder: '' })
+
+const SETTLEMENT_STATUS_LABEL: Record<string, string> = {
+  PENDING: '대기', PROCESSING: '처리 중', COMPLETED: '완료', FAILED: '실패',
+}
+const SETTLEMENT_STATUS_CLASS: Record<string, string> = {
+  PENDING: 'bg-amber-100 text-amber-700',
+  PROCESSING: 'bg-sky-100 text-sky-600',
+  COMPLETED: 'bg-emerald-100 text-emerald-700',
+  FAILED: 'bg-red-100 text-red-600',
+}
+
+async function loadSettlements() {
+  if (settlements.value.length > 0 && settlementAccountLoaded.value) return
+  isLoadingSettlements.value = true
+  try {
+    const [list] = await Promise.all([settlementApi.getSettlements()])
+    settlements.value = list
+    try {
+      settlementAccount.value = await settlementApi.getAccount()
+    } catch {
+      settlementAccount.value = null
+    }
+    settlementAccountLoaded.value = true
+  } finally {
+    isLoadingSettlements.value = false
+  }
+}
+
+async function loadMonthlyReport() {
+  try {
+    monthlyReport.value = await settlementApi.getMonthlyReport(reportYear.value, reportMonth.value)
+  } catch {
+    monthlyReport.value = null
+  }
+}
+
+async function downloadPdf(settlementId: number) {
+  try {
+    const res = await settlementApi.downloadPdf(settlementId)
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `settlement-${settlementId}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    alert('PDF 다운로드에 실패했습니다.')
+  }
+}
+
+function openAccountForm() {
+  accountForm.value = settlementAccount.value
+    ? { bankName: settlementAccount.value.bankName, accountNumber: settlementAccount.value.accountNumber, accountHolder: settlementAccount.value.accountHolder }
+    : { bankName: '', accountNumber: '', accountHolder: '' }
+  showAccountForm.value = true
+}
+
+async function saveAccount() {
+  if (isSavingAccount.value) return
+  isSavingAccount.value = true
+  try {
+    if (settlementAccount.value) {
+      settlementAccount.value = await settlementApi.updateAccount(accountForm.value)
+    } else {
+      settlementAccount.value = await settlementApi.createAccount(accountForm.value)
+    }
+    showAccountForm.value = false
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '저장에 실패했습니다.')
+  } finally {
+    isSavingAccount.value = false
+  }
+}
+
 // Seller sidebar nav
 const navItems = [
-  { key: 'home',     icon: LayoutDashboard, label: '판매자 홈' },
-  { key: 'products', icon: Package,         label: '내 상품 관리' },
-  { key: 'auctions', icon: Gavel,           label: '내 경매 관리' },
+  { key: 'home',        icon: LayoutDashboard, label: '판매자 홈' },
+  { key: 'products',    icon: Package,         label: '내 상품 관리' },
+  { key: 'auctions',    icon: Gavel,           label: '내 경매 관리' },
+  { key: 'settlements', icon: Banknote,        label: '정산 관리' },
 ]
 
 const goToNewProduct = () => router.push('/seller/products/new')
@@ -149,7 +240,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
               <button
                 v-for="item in navItems"
                 :key="item.key"
-                @click="activeTab = item.key as 'home' | 'products' | 'auctions'; if (item.key === 'auctions') loadMyAuctions()"
+                @click="activeTab = item.key as 'home' | 'products' | 'auctions' | 'settlements'; if (item.key === 'auctions') loadMyAuctions(); if (item.key === 'settlements') loadSettlements()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer
                        transition-colors duration-150 text-left"
                 :class="activeTab === item.key
@@ -160,6 +251,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                 <span>{{ item.label }}</span>
               </button>
             </nav>
+
 
             <!-- Shortcuts -->
             <div class="space-y-1 border-t border-sky-100 pt-4">
@@ -443,8 +535,191 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
             </template>
           </div>
 
+          <!-- ── TAB: 정산 관리 ── -->
+          <div v-show="activeTab === 'settlements'">
+            <h1 class="text-3xl font-black text-slate-900 mb-6">정산 관리</h1>
+
+            <div v-if="isLoadingSettlements" class="flex justify-center py-16">
+              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+            </div>
+
+            <template v-else>
+              <!-- 정산 계좌 섹션 -->
+              <section class="bg-white rounded-2xl border border-sky-100 p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                  <h2 class="text-lg font-bold text-slate-900">정산 계좌</h2>
+                  <button
+                    @click="openAccountForm"
+                    class="flex items-center gap-1.5 text-sm text-sky-500 hover:text-sky-600 font-semibold transition"
+                  >
+                    <CreditCard class="w-4 h-4" />
+                    {{ settlementAccount ? '계좌 수정' : '계좌 등록' }}
+                  </button>
+                </div>
+
+                <div v-if="settlementAccount" class="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <div class="text-xs text-slate-400 mb-0.5">은행</div>
+                    <div class="font-semibold text-slate-800">{{ settlementAccount.bankName }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-slate-400 mb-0.5">계좌번호</div>
+                    <div class="font-semibold text-slate-800 font-mono">{{ settlementAccount.accountNumber }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-slate-400 mb-0.5">예금주</div>
+                    <div class="font-semibold text-slate-800">{{ settlementAccount.accountHolder }}</div>
+                  </div>
+                </div>
+                <div v-else class="flex items-center gap-3 py-4 text-slate-400">
+                  <CreditCard class="w-5 h-5 flex-shrink-0" />
+                  <span class="text-sm">정산 계좌가 등록되지 않았습니다. 계좌를 등록해야 정산금을 받을 수 있습니다.</span>
+                </div>
+              </section>
+
+              <!-- 월간 보고서 섹션 -->
+              <section class="bg-white rounded-2xl border border-sky-100 p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                  <h2 class="text-lg font-bold text-slate-900">월간 정산 보고서</h2>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model.number="reportYear"
+                      type="number"
+                      min="2020"
+                      :max="new Date().getFullYear()"
+                      class="w-20 border border-sky-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    />
+                    <span class="text-slate-400 text-sm">년</span>
+                    <select
+                      v-model.number="reportMonth"
+                      class="border border-sky-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
+                    >
+                      <option v-for="m in 12" :key="m" :value="m">{{ m }}월</option>
+                    </select>
+                    <button
+                      @click="loadMonthlyReport"
+                      class="flex items-center gap-1.5 px-4 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold rounded-lg transition"
+                    >
+                      <Calendar class="w-4 h-4" />
+                      조회
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="monthlyReport" class="grid grid-cols-3 gap-4">
+                  <div class="bg-sky-50 rounded-xl p-4 text-center border border-sky-100">
+                    <div class="text-xl font-black text-sky-600">₩{{ monthlyReport.totalAmount.toLocaleString() }}</div>
+                    <div class="text-xs text-slate-400 mt-0.5">총 판매액</div>
+                  </div>
+                  <div class="bg-red-50 rounded-xl p-4 text-center border border-red-100">
+                    <div class="text-xl font-black text-red-500">₩{{ monthlyReport.totalCommission.toLocaleString() }}</div>
+                    <div class="text-xs text-slate-400 mt-0.5">수수료</div>
+                  </div>
+                  <div class="bg-emerald-50 rounded-xl p-4 text-center border border-emerald-100">
+                    <div class="text-xl font-black text-emerald-600">₩{{ monthlyReport.totalNetAmount.toLocaleString() }}</div>
+                    <div class="text-xs text-slate-400 mt-0.5">실지급액 ({{ monthlyReport.settlementCount }}건)</div>
+                  </div>
+                </div>
+                <div v-else class="text-center py-8 text-slate-400 text-sm">
+                  연도와 월을 선택 후 조회 버튼을 눌러주세요
+                </div>
+              </section>
+
+              <!-- 정산 목록 -->
+              <section>
+                <h2 class="text-lg font-bold text-slate-900 mb-4">정산 내역</h2>
+
+                <div v-if="settlements.length === 0" class="text-center py-16 bg-white rounded-2xl border border-sky-100">
+                  <Banknote class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                  <p class="text-slate-400 text-sm">정산 내역이 없습니다</p>
+                </div>
+
+                <div v-else class="space-y-3">
+                  <div
+                    v-for="settlement in settlements"
+                    :key="settlement.id"
+                    class="bg-white rounded-2xl border border-sky-100 p-5"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-4">
+                        <div>
+                          <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs px-2 py-0.5 rounded-full font-semibold" :class="SETTLEMENT_STATUS_CLASS[settlement.status] ?? 'bg-slate-100 text-slate-500'">
+                              {{ SETTLEMENT_STATUS_LABEL[settlement.status] ?? settlement.status }}
+                            </span>
+                            <span class="text-xs text-slate-400">주문 #{{ settlement.orderId }}</span>
+                          </div>
+                          <div class="text-sm text-slate-500">
+                            판매액 <span class="font-semibold text-slate-800">₩{{ settlement.amount.toLocaleString() }}</span>
+                            &nbsp;·&nbsp; 수수료 <span class="text-red-500">-₩{{ settlement.commissionAmount.toLocaleString() }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="text-right flex-shrink-0">
+                        <div class="font-black text-emerald-600 text-lg">₩{{ settlement.netAmount.toLocaleString() }}</div>
+                        <div class="flex items-center gap-2 mt-2 justify-end">
+                          <span class="text-xs text-slate-400">
+                            {{ settlement.settledAt ? new Date(settlement.settledAt).toLocaleDateString('ko-KR') : new Date(settlement.createdAt).toLocaleDateString('ko-KR') }}
+                          </span>
+                          <button
+                            @click="downloadPdf(settlement.id)"
+                            class="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-sky-200 text-sky-500 hover:bg-sky-50 transition"
+                          >
+                            <Download class="w-3 h-3" />
+                            PDF
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </template>
+          </div>
+
         </div>
       </div>
     </main>
+
+    <!-- 정산 계좌 폼 모달 -->
+    <Transition name="fade">
+      <div v-if="showAccountForm" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
+          <h2 class="font-black text-slate-900 text-lg mb-5">
+            {{ settlementAccount ? '정산 계좌 수정' : '정산 계좌 등록' }}
+          </h2>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1.5">은행명</label>
+              <input v-model="accountForm.bankName" type="text" placeholder="예: 국민은행" class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1.5">계좌번호</label>
+              <input v-model="accountForm.accountNumber" type="text" placeholder="- 없이 입력" class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono" />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-1.5">예금주</label>
+              <input v-model="accountForm.accountHolder" type="text" placeholder="예금주 이름" class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            </div>
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button @click="showAccountForm = false" :disabled="isSavingAccount" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
+            <button
+              @click="saveAccount"
+              :disabled="isSavingAccount || !accountForm.bankName || !accountForm.accountNumber || !accountForm.accountHolder"
+              class="flex-1 px-4 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white rounded-full text-sm font-bold transition flex items-center justify-center gap-2"
+            >
+              <Loader2 v-if="isSavingAccount" class="w-4 h-4 animate-spin" />
+              {{ isSavingAccount ? '저장 중...' : '저장' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>

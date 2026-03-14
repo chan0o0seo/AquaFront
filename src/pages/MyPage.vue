@@ -5,7 +5,7 @@ import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings, Loader2, Chec
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-import { orderApi, productApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus } from '@/api'
+import { orderApi, productApi, memberApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus, type NotificationType } from '@/api'
 import WishlistTab from '../components/mypage/WishlistTab.vue'
 import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
 import ProfileEditModal from '../components/mypage/ProfileEditModal.vue'
@@ -110,9 +110,13 @@ const menuItems = computed(() => {
 })
 
 // 판매자 탭 진입 시 신청 상태 조회 (BUYER 전용)
+// 알림 탭 진입 시 설정 조회
 watch(activeTab, (tab) => {
   if (tab === 'seller' && user.value.memberType === 'buyer') {
     fetchApplicationStatus()
+  }
+  if (tab === 'notifications') {
+    loadNotificationSettings()
   }
 })
 
@@ -132,6 +136,37 @@ const notifications = ref({
   orderStatus: true,
   marketing: false
 })
+
+async function loadNotificationSettings() {
+  try {
+    const settings = await memberApi.getNotificationSettings()
+    for (const s of settings) {
+      if (s.type === 'AUCTION_ENDING')       notifications.value.auctionEnd = s.enabled
+      if (s.type === 'FOLLOWED_NEW_PRODUCT') notifications.value.newBreeder = s.enabled
+      if (s.type === 'ORDER_DELIVERY')       notifications.value.orderStatus = s.enabled
+      if (s.type === 'MARKETING')            notifications.value.marketing  = s.enabled
+    }
+  } catch {
+    // 실패 시 기본값 유지
+  }
+}
+
+const notificationTypeMap: Record<keyof typeof notifications.value, NotificationType> = {
+  auctionEnd: 'AUCTION_ENDING',
+  newBreeder: 'FOLLOWED_NEW_PRODUCT',
+  orderStatus: 'ORDER_DELIVERY',
+  marketing: 'MARKETING',
+}
+
+async function toggleNotification(key: keyof typeof notifications.value) {
+  const newValue = !notifications.value[key]
+  notifications.value[key] = newValue
+  try {
+    await memberApi.updateNotificationSetting(notificationTypeMap[key], newValue)
+  } catch {
+    notifications.value[key] = !newValue // 실패 시 롤백
+  }
+}
 
 // Profile edit modal
 const showProfileEditModal = ref(false)
@@ -299,7 +334,7 @@ function goToOrderDetail(orderId: number) {
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">경매 종료 임박 알림</span>
                 <button
-                    @click="notifications.auctionEnd = !notifications.auctionEnd"
+                    @click="toggleNotification('auctionEnd')"
                     class="w-12 h-6 rounded-full transition-all duration-200 relative"
                     :class="notifications.auctionEnd ? 'bg-sky-500' : 'bg-slate-200'"
                 >
@@ -312,7 +347,7 @@ function goToOrderDetail(orderId: number) {
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">팔로우한 브리더 신규 개체 등록</span>
                 <button
-                    @click="notifications.newBreeder = !notifications.newBreeder"
+                    @click="toggleNotification('newBreeder')"
                     class="w-12 h-6 rounded-full transition-all duration-200 relative"
                     :class="notifications.newBreeder ? 'bg-sky-500' : 'bg-slate-200'"
                 >
@@ -325,7 +360,7 @@ function goToOrderDetail(orderId: number) {
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">주문 배송 상태 변경</span>
                 <button
-                    @click="notifications.orderStatus = !notifications.orderStatus"
+                    @click="toggleNotification('orderStatus')"
                     class="w-12 h-6 rounded-full transition-all duration-200 relative"
                     :class="notifications.orderStatus ? 'bg-sky-500' : 'bg-slate-200'"
                 >
@@ -338,7 +373,7 @@ function goToOrderDetail(orderId: number) {
               <div class="flex justify-between items-center py-4 border-b border-sky-50">
                 <span class="text-slate-700">마케팅 및 이벤트 알림</span>
                 <button
-                    @click="notifications.marketing = !notifications.marketing"
+                    @click="toggleNotification('marketing')"
                     class="w-12 h-6 rounded-full transition-all duration-200 relative"
                     :class="notifications.marketing ? 'bg-sky-500' : 'bg-slate-200'"
                 >
