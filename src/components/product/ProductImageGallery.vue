@@ -32,7 +32,8 @@ const setActiveImage = (index: number) => {
         v-if="currentImage"
         :src="currentImage"
         :alt="productName"
-        loading="eager"
+        loading="lazy"
+        decoding="async"
         class="w-full h-full object-cover"
       />
       <div

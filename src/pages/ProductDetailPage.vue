@@ -112,7 +112,8 @@ const isWritingReview = ref(false)
 const isSubmittingReview = ref(false)
 const canReview = ref(false)
 
-const currentUserId = computed<string | null>(() => authUser.value?.id ?? null)
+const currentUserId  = computed<string | null>(() => authUser.value?.id ?? null)
+const isOwnProduct   = computed(() => isLoggedIn.value && !!product.value && product.value.sellerId === authUser.value?.id)
 
 // Badge mappings
 const productTypeLabels: Record<string, { label: string; class: string }> = {
@@ -262,7 +263,7 @@ const cancelReviewForm = () => {
 
 // Cart Actions
 const addToCart = async () => {
-  if (!product.value || isAddingToCart.value) return
+  if (!product.value || isAddingToCart.value || isOwnProduct.value) return
 
   isAddingToCart.value = true
 
@@ -280,6 +281,7 @@ const addToCart = async () => {
 }
 
 const buyNow = () => {
+  if (isOwnProduct.value) return
   router.push(`/checkout?productId=${product.value?.id}&quantity=${quantity.value}`)
 }
 
@@ -487,87 +489,104 @@ watch(
 
           <!-- Quantity + CTA -->
           <div class="mt-6">
-            <!-- Quantity Selector -->
-            <div v-show="product?.status === 'ACTIVE'" class="mb-4">
-              <QuantitySelector
-                  v-model="quantity"
-                  :max-quantity="product?.stock || 99"
-              />
+
+            <!-- ── 내 상품: 구매 불가 안내 ── -->
+            <div v-if="isOwnProduct" class="rounded-2xl bg-sky-50 border border-sky-200 p-5 text-center">
+              <p class="font-semibold text-sky-700 mb-1">내가 등록한 상품입니다</p>
+              <p class="text-xs text-sky-500 mb-4">판매자는 자신의 상품을 구매할 수 없습니다</p>
+              <button
+                @click="router.push(`/seller/products/${product?.id}/edit`)"
+                class="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold rounded-full transition-colors"
+              >
+                <Check :size="15" />
+                상품 수정하기
+              </button>
             </div>
 
-            <!-- Wishlist Button -->
-            <button
-                @click="toggleWishlist"
-                :disabled="isTogglingWishlist"
-                class="w-full py-4 px-8 rounded-full font-bold transition-all duration-200 flex items-center justify-center gap-2 border-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                :class="[
-                  isWishlisted
-                    ? 'border-red-400 bg-red-50 text-red-500 hover:bg-red-100'
-                    : 'border-slate-200 bg-white text-slate-500 hover:border-red-300 hover:text-red-400'
-                ]"
-            >
-              <Heart
-                  class="w-5 h-5 transition-all duration-200"
-                  :class="[isWishlisted ? 'fill-current' : '', heartAnimating ? 'heart-pop' : '']"
-              />
-              <span>{{ isWishlisted ? '찜 완료' : '찜하기' }}</span>
-            </button>
+            <!-- ── 일반 구매자: 기존 CTA ── -->
+            <template v-else>
+              <!-- Quantity Selector -->
+              <div v-show="product?.status === 'ACTIVE'" class="mb-4">
+                <QuantitySelector
+                    v-model="quantity"
+                    :max-quantity="product?.stock || 99"
+                />
+              </div>
 
+              <!-- Wishlist Button -->
+              <button
+                  @click="toggleWishlist"
+                  :disabled="isTogglingWishlist"
+                  class="w-full py-4 px-8 rounded-full font-bold transition-all duration-200 flex items-center justify-center gap-2 border-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  :class="[
+                    isWishlisted
+                      ? 'border-red-400 bg-red-50 text-red-500 hover:bg-red-100'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-red-300 hover:text-red-400'
+                  ]"
+              >
+                <Heart
+                    class="w-5 h-5 transition-all duration-200"
+                    :class="[isWishlisted ? 'fill-current' : '', heartAnimating ? 'heart-pop' : '']"
+                />
+                <span>{{ isWishlisted ? '찜 완료' : '찜하기' }}</span>
+              </button>
 
-            <!-- Add to Cart -->
-            <button
-                @click="addToCart"
-                :disabled="product?.status === 'SOLD_OUT' || isAddingToCart"
-                class="w-full py-4 px-8 rounded-full font-bold mt-2 transition-all duration-200
-                     bg-white border-2 border-sky-400 text-sky-600
-                     hover:bg-sky-50
-                 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <template v-if="isAddingToCart">
-                <span class="inline-block w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mr-2" />
-                담는 중...
-              </template>
-              <template v-else>
-                <ShoppingCart :size="20" class="inline mr-2" />
-                장바구니 담기
-              </template>
-            </button>
+              <!-- Add to Cart -->
+              <button
+                  @click="addToCart"
+                  :disabled="product?.status === 'SOLD_OUT' || isAddingToCart"
+                  class="w-full py-4 px-8 rounded-full font-bold mt-2 transition-all duration-200
+                       bg-white border-2 border-sky-400 text-sky-600
+                       hover:bg-sky-50
+                   disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <template v-if="isAddingToCart">
+                  <span class="inline-block w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mr-2" />
+                  담는 중...
+                </template>
+                <template v-else>
+                  <ShoppingCart :size="20" class="inline mr-2" />
+                  장바구니 담기
+                </template>
+              </button>
 
-            <!-- Buy Now -->
-            <button
-                @click="buyNow"
-                :disabled="product?.status === 'SOLD_OUT'"
-                class="w-full py-4 px-8 rounded-full font-bold mt-2 transition-all duration-200
-                     bg-sky-500 text-white
-                     hover:bg-sky-600
-                     disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
-            >
-              바로 구매하기
-            </button>
+              <!-- Buy Now -->
+              <button
+                  @click="buyNow"
+                  :disabled="product?.status === 'SOLD_OUT'"
+                  class="w-full py-4 px-8 rounded-full font-bold mt-2 transition-all duration-200
+                       bg-sky-500 text-white
+                       hover:bg-sky-600
+                       disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+              >
+                바로 구매하기
+              </button>
 
-            <!-- Sold Out Message -->
-            <div
-                v-show="product?.status === 'SOLD_OUT'"
-                class="bg-slate-100 text-slate-500 text-center rounded-2xl py-5 font-semibold mt-4"
-            >
-              현재 품절된 상품입니다
-            </div>
+              <!-- Sold Out Message -->
+              <div
+                  v-show="product?.status === 'SOLD_OUT'"
+                  class="bg-slate-100 text-slate-500 text-center rounded-2xl py-5 font-semibold mt-4"
+              >
+                현재 품절된 상품입니다
+              </div>
 
-            <!-- Safety Badges -->
-            <div class="flex gap-4 justify-center mt-4 text-xs text-slate-400">
-              <span class="flex items-center gap-1">
-                <Shield :size="14" />
-                에스크로 결제
-              </span>
-              <span class="flex items-center gap-1">
-                <Thermometer :size="14" />
-                날씨 연동 배송
-              </span>
-              <span class="flex items-center gap-1">
-                <Fish :size="14" />
-                생물 사체 보상
-              </span>
-            </div>
+              <!-- Safety Badges -->
+              <div class="flex gap-4 justify-center mt-4 text-xs text-slate-400">
+                <span class="flex items-center gap-1">
+                  <Shield :size="14" />
+                  에스크로 결제
+                </span>
+                <span class="flex items-center gap-1">
+                  <Thermometer :size="14" />
+                  날씨 연동 배송
+                </span>
+                <span class="flex items-center gap-1">
+                  <Fish :size="14" />
+                  생물 사체 보상
+                </span>
+              </div>
+            </template>
+
           </div>
         </div>
       </div>

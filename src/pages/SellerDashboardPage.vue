@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard, Package, Plus, Gavel, TrendingUp,
   Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy, ShoppingBag,
-  AlertCircle, MapPin, ArrowRight
+  AlertCircle, MapPin, ArrowRight, CheckCircle2
 } from 'lucide-vue-next'
 import SellerStatsGrid from '@/components/seller/SellerStatsGrid.vue'
 import SellerProductList from '@/components/seller/SellerProductList.vue'
@@ -19,6 +19,12 @@ const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
 const activeTab = ref<'home' | 'products' | 'auctions' | 'orders'>('home')
+// 한 번 활성화된 탭은 DOM에서 제거하지 않음 (remount 방지)
+const mountedTabs = ref(new Set<string>(['home']))
+function setTab(tab: 'home' | 'products' | 'auctions' | 'orders') {
+  activeTab.value = tab
+  mountedTabs.value.add(tab)
+}
 
 // 내 경매 목록
 const myAuctions = ref<AuctionResponse[]>([])
@@ -53,15 +59,40 @@ function formatDateTime(iso: string) {
 }
 
 const stats = ref<SellerStats | null>(null)
+const allProducts   = ref<ProductDetail[]>([])
 const recentProducts = ref<ProductDetail[]>([])
 const pendingOrders = ref<OrderResponse[]>([])
 const isLoadingHome = ref(false)
 
 const formatPrice = (n: number) => '₩' + n.toLocaleString()
 
+// ── 인사말 ────────────────────────────────────────────
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return '좋은 아침이에요'
+  if (h < 18) return '안녕하세요'
+  return '수고하셨어요'
+})
+const todayStr = new Date().toLocaleDateString('ko-KR', {
+  year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
+})
+
+// ── 상품 현황 파생 ────────────────────────────────────
+const activeProductCount = computed(() => allProducts.value.filter(p => p.status === 'ACTIVE').length)
+const soldOutCount       = computed(() => allProducts.value.filter(p => p.status === 'SOLD_OUT').length)
+const lowStockCount      = computed(() => allProducts.value.filter(p => p.status === 'ACTIVE' && p.stock > 0 && p.stock <= 5).length)
+
+// 처리 필요 항목 존재 여부
+const hasActionItems = computed(() =>
+  pendingOrders.value.length > 0 ||
+  soldOutCount.value > 0 ||
+  lowStockCount.value > 0 ||
+  (stats.value?.activeAuctions ?? 0) > 0
+)
+
 onMounted(async () => {
   if (route.query.tab === 'auctions') {
-    activeTab.value = 'auctions'
+    setTab('auctions')
     loadMyAuctions(true)
   }
   isLoadingHome.value = true
@@ -72,9 +103,10 @@ onMounted(async () => {
       sellerApi.getMyProducts(),
       sellerApi.getSellerOrders('PAID'),
     ])
-    stats.value = statsData
+    stats.value       = statsData
+    allProducts.value = productsData
     recentProducts.value = productsData.slice(0, 5)
-    pendingOrders.value = pendingData
+    pendingOrders.value  = pendingData
   } catch (e) {
     console.error('Failed to load seller dashboard', e)
   } finally {
@@ -158,7 +190,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
               <button
                 v-for="item in navItems"
                 :key="item.key"
-                @click="activeTab = item.key as 'home' | 'products' | 'orders' | 'auctions'; if (item.key === 'auctions') loadMyAuctions()"
+                @click="setTab(item.key as any); if (item.key === 'auctions') loadMyAuctions()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer
                        transition-colors duration-150 text-left"
                 :class="activeTab === item.key
@@ -181,7 +213,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                 상품 등록
               </button>
               <button
-                @click="activeTab = 'auctions'; loadMyAuctions()"
+                @click="setTab('auctions'); loadMyAuctions()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left
                        text-slate-600 hover:bg-sky-50 hover:text-sky-600 transition-colors"
               >
@@ -221,61 +253,169 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
 
           <!-- ── TAB: 판매자 홈 ── -->
           <div v-show="activeTab === 'home'">
-            <div class="flex items-center justify-between mb-6">
-              <h1 class="text-3xl font-black text-slate-900">판매자 홈</h1>
-              <span class="text-sm text-slate-400">{{ new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) }}</span>
-            </div>
 
-            <!-- Loading -->
-            <div v-if="isLoadingHome" class="flex justify-center py-16">
-              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+            <!-- ── 스켈레톤 로딩 ── -->
+            <div v-if="isLoadingHome" class="animate-pulse space-y-6">
+              <!-- 인사말 -->
+              <div class="flex items-center justify-between">
+                <div class="space-y-2">
+                  <div class="h-3.5 w-24 bg-slate-100 rounded-full" />
+                  <div class="h-7 w-48 bg-slate-200 rounded-full" />
+                </div>
+                <div class="h-4 w-32 bg-slate-100 rounded-full" />
+              </div>
+              <!-- 액션 카드 -->
+              <div class="grid grid-cols-3 gap-3">
+                <div v-for="i in 3" :key="i" class="h-20 rounded-2xl bg-slate-100" />
+              </div>
+              <!-- 스탯 -->
+              <div class="grid grid-cols-5 gap-3">
+                <div class="col-span-2 h-24 rounded-2xl bg-slate-100" />
+                <div v-for="i in 3" :key="i" class="h-24 rounded-2xl bg-slate-100" />
+              </div>
+              <!-- 주문 목록 -->
+              <div class="rounded-2xl border border-sky-50 overflow-hidden">
+                <div class="h-12 bg-slate-50 border-b border-sky-50 px-5 flex items-center gap-3">
+                  <div class="h-4 w-24 bg-slate-200 rounded-full" />
+                </div>
+                <div v-for="i in 3" :key="i" class="flex items-center gap-4 px-5 py-4 border-b border-sky-50 last:border-0">
+                  <div class="w-9 h-9 rounded-xl bg-slate-100 flex-shrink-0" />
+                  <div class="flex-1 space-y-1.5">
+                    <div class="h-3.5 w-2/3 bg-slate-100 rounded-full" />
+                    <div class="h-3 w-1/3 bg-slate-100 rounded-full" />
+                  </div>
+                  <div class="w-16 h-4 bg-slate-100 rounded-full" />
+                </div>
+              </div>
+              <!-- 상품 목록 -->
+              <div class="rounded-2xl border border-sky-50 overflow-hidden">
+                <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-4 border-b border-sky-50 last:border-0">
+                  <div class="w-12 h-12 rounded-xl bg-slate-100 flex-shrink-0" />
+                  <div class="flex-1 space-y-1.5">
+                    <div class="h-3.5 w-1/2 bg-slate-100 rounded-full" />
+                    <div class="h-3 w-1/4 bg-slate-100 rounded-full" />
+                  </div>
+                  <div class="w-14 h-4 bg-slate-100 rounded-full" />
+                </div>
+              </div>
             </div>
 
             <template v-else>
 
-              <!-- 신규 주문 알림 배너 -->
-              <div
-                v-if="pendingOrders.length > 0"
-                class="mb-6 flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 cursor-pointer hover:bg-amber-100 transition-colors"
-                @click="activeTab = 'orders'"
-              >
-                <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
-                    <AlertCircle class="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <div class="font-bold text-amber-800">신규 주문 {{ pendingOrders.length }}건이 처리를 기다리고 있습니다</div>
-                    <div class="text-xs text-amber-600 mt-0.5">송장을 등록하여 배송을 시작해주세요</div>
-                  </div>
+              <!-- ── 인사말 헤더 ── -->
+              <div class="flex items-start justify-between mb-7">
+                <div>
+                  <p class="text-sm text-sky-500 font-semibold mb-1">{{ greeting }},</p>
+                  <h1 class="text-2xl font-black text-slate-900">
+                    {{ profileData?.businessName ?? '판매자' }}님 👋
+                  </h1>
                 </div>
-                <div class="flex items-center gap-1 text-amber-600 font-semibold text-sm flex-shrink-0">
-                  주문 관리
-                  <ArrowRight class="w-4 h-4" />
+                <span class="text-sm text-slate-400 mt-1 flex-shrink-0">{{ todayStr }}</span>
+              </div>
+
+              <!-- ── 처리 필요 항목 ── -->
+              <div class="mb-7">
+                <!-- 모두 처리됨 -->
+                <div
+                  v-if="!hasActionItems"
+                  class="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl px-5 py-3.5"
+                >
+                  <CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                  <p class="text-sm font-semibold text-emerald-700">처리할 업무가 없어요</p>
+                  <p class="text-sm text-emerald-500">오늘도 수고 많으셨습니다!</p>
+                </div>
+
+                <!-- 처리 필요 항목 카드들 -->
+                <div v-else class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+                  <!-- 신규 주문 -->
+                  <button
+                    v-if="pendingOrders.length > 0"
+                    @click="setTab('orders')"
+                    class="group flex items-center gap-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left hover:bg-amber-100 hover:border-amber-300 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
+                      <ShoppingBag class="w-5 h-5 text-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-amber-700 leading-none">{{ pendingOrders.length }}<span class="text-base font-bold ml-0.5">건</span></p>
+                      <p class="text-xs text-amber-600 mt-1 font-medium">신규 주문 처리 필요</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-amber-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
+                  <!-- 품절 상품 -->
+                  <button
+                    v-if="soldOutCount > 0"
+                    @click="setTab('products')"
+                    class="group flex items-center gap-4 bg-red-50 border border-red-200 rounded-2xl p-4 text-left hover:bg-red-100 hover:border-red-300 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-red-400 flex items-center justify-center flex-shrink-0">
+                      <Package class="w-5 h-5 text-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-red-700 leading-none">{{ soldOutCount }}<span class="text-base font-bold ml-0.5">개</span></p>
+                      <p class="text-xs text-red-600 mt-1 font-medium">품절 상품 재입고 필요</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-red-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
+                  <!-- 재고 부족 (품절은 없지만 임박한 경우) -->
+                  <button
+                    v-else-if="lowStockCount > 0"
+                    @click="setTab('products')"
+                    class="group flex items-center gap-4 bg-orange-50 border border-orange-200 rounded-2xl p-4 text-left hover:bg-orange-100 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-orange-400 flex items-center justify-center flex-shrink-0">
+                      <AlertCircle class="w-5 h-5 text-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-orange-700 leading-none">{{ lowStockCount }}<span class="text-base font-bold ml-0.5">개</span></p>
+                      <p class="text-xs text-orange-600 mt-1 font-medium">재고 부족 상품 확인 필요</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-orange-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
+                  <!-- 진행 중 경매 -->
+                  <button
+                    v-if="stats?.activeAuctions"
+                    @click="setTab('auctions'); loadMyAuctions()"
+                    class="group flex items-center gap-4 bg-red-50 border border-red-100 rounded-2xl p-4 text-left hover:bg-red-100 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0 relative">
+                      <Gavel class="w-5 h-5 text-white" />
+                      <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-300 rounded-full animate-pulse border-2 border-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-red-700 leading-none">{{ stats.activeAuctions }}<span class="text-base font-bold ml-0.5">건</span></p>
+                      <p class="text-xs text-red-500 mt-1 font-medium">LIVE 경매 진행 중</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-red-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
                 </div>
               </div>
 
-              <!-- Stats grid -->
+              <!-- ── 통계 그리드 ── -->
               <SellerStatsGrid :stats="stats ?? { totalProducts: 0, soldCount: 0, activeAuctions: 0, followerCount: profileData?.followerCount ?? 0, monthlyRevenue: 0 }" />
 
-              <!-- 신규 주문 미리보기 -->
+              <!-- ── 신규 주문 미리보기 ── -->
               <section v-if="pendingOrders.length > 0" class="mt-8">
                 <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-xl font-bold text-slate-900">처리 필요 주문</h2>
+                  <h2 class="text-lg font-bold text-slate-900">처리 대기 주문</h2>
                   <button
-                    @click="activeTab = 'orders'"
+                    @click="setTab('orders')"
                     class="flex items-center gap-1 text-sm text-sky-500 hover:text-sky-600 font-semibold transition-colors"
                   >
-                    전체 보기
-                    <ChevronRight class="w-4 h-4" />
+                    전체 보기 <ChevronRight class="w-4 h-4" />
                   </button>
                 </div>
-                <div class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
+                <div class="rounded-2xl border border-sky-100 overflow-hidden divide-y divide-sky-50">
                   <div
-                    v-for="(order, idx) in pendingOrders.slice(0, 3)"
+                    v-for="order in pendingOrders.slice(0, 3)"
                     :key="order.orderId"
-                    class="flex items-center gap-4 px-5 py-4 hover:bg-sky-50/50 transition-colors cursor-pointer"
-                    :class="{ 'border-b border-sky-50': idx < Math.min(pendingOrders.length, 3) - 1 }"
-                    @click="activeTab = 'orders'"
+                    @click="setTab('orders')"
+                    class="flex items-center gap-4 px-5 py-4 hover:bg-sky-50/50 transition-colors cursor-pointer group"
                   >
                     <div class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
                       <ShoppingBag class="w-4 h-4 text-amber-500" />
@@ -292,114 +432,120 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                         <span class="truncate">{{ order.address }}</span>
                       </div>
                     </div>
-                    <div class="text-right flex-shrink-0">
+                    <div class="flex items-center gap-3 flex-shrink-0">
                       <p class="font-bold text-sky-600 text-sm">{{ formatPrice(order.totalAmount) }}</p>
-                      <span class="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full font-medium">신규</span>
+                      <span class="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-semibold group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                        송장 등록
+                      </span>
                     </div>
                   </div>
                   <div
                     v-if="pendingOrders.length > 3"
-                    class="px-5 py-3 text-center text-sm text-sky-500 font-medium border-t border-sky-50 cursor-pointer hover:bg-sky-50 transition-colors"
-                    @click="activeTab = 'orders'"
+                    @click="setTab('orders')"
+                    class="px-5 py-3 text-center text-sm text-sky-500 font-medium cursor-pointer hover:bg-sky-50 transition-colors"
                   >
                     + {{ pendingOrders.length - 3 }}건 더 보기
                   </div>
                 </div>
               </section>
 
-              <!-- 내 상품 현황 -->
+              <!-- ── 내 상품 현황 ── -->
               <section class="mt-8">
                 <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-xl font-bold text-slate-900">내 상품 현황</h2>
-                  <button
-                    @click="activeTab = 'products'"
-                    class="flex items-center gap-1 text-sm text-sky-500 hover:text-sky-600 font-semibold transition-colors"
-                  >
-                    전체 상품 관리
-                    <ChevronRight class="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div v-if="recentProducts.length === 0" class="bg-sky-50 rounded-2xl border border-sky-100 py-10 text-center">
-                  <Package class="w-10 h-10 text-sky-200 mx-auto mb-3" />
-                  <p class="text-slate-400 text-sm mb-3">등록된 상품이 없습니다</p>
-                  <button @click="goToNewProduct" class="text-sm font-semibold text-sky-500 hover:text-sky-600">첫 상품 등록하기 →</button>
-                </div>
-
-                <div v-else class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
-                  <div
-                    v-for="(product, idx) in recentProducts"
-                    :key="product.id"
-                    class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-sky-50/50 cursor-pointer"
-                    :class="{ 'border-b border-sky-50': idx < recentProducts.length - 1 }"
-                    @click="router.push(`/products/${product.id}`)"
-                  >
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      <img v-if="getThumbnailUrl(product)" :src="getThumbnailUrl(product)!" :alt="product.name" class="w-full h-full object-cover" />
-                      <Package v-else class="w-6 h-6 text-sky-300" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="font-semibold text-slate-800 text-sm line-clamp-1">{{ product.name }}</p>
-                      <p class="text-slate-400 text-xs mt-0.5">재고 {{ product.stock }}개</p>
-                    </div>
-                    <div class="text-right flex-shrink-0">
-                      <p class="font-bold text-sky-600 text-sm">₩{{ product.price.toLocaleString() }}</p>
-                      <span class="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full" :class="statusBadge(product.status)">
-                        {{ statusText(product.status) }}
+                  <div class="flex items-center gap-3 flex-wrap">
+                    <h2 class="text-lg font-bold text-slate-900">내 상품 현황</h2>
+                    <div v-if="allProducts.length > 0" class="flex gap-1.5">
+                      <span class="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                        판매중 {{ activeProductCount }}
+                      </span>
+                      <span v-if="soldOutCount > 0" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-semibold">
+                        품절 {{ soldOutCount }}
                       </span>
                     </div>
                   </div>
+                  <button
+                    v-if="allProducts.length > 0"
+                    @click="setTab('products')"
+                    class="flex items-center gap-1 text-sm text-sky-500 hover:text-sky-600 font-semibold transition-colors flex-shrink-0"
+                  >
+                    전체 보기 <ChevronRight class="w-4 h-4" />
+                  </button>
                 </div>
-              </section>
 
-              <!-- 빠른 메뉴 -->
-              <section class="mt-8">
-                <h2 class="text-xl font-bold text-slate-900 mb-4">빠른 메뉴</h2>
-                <div class="grid grid-cols-2 gap-3">
-                  <button
-                    @click="goToNewProduct"
-                    class="flex items-center gap-3 bg-sky-500 hover:bg-sky-600 text-white rounded-2xl p-5 font-semibold transition-colors text-left"
-                  >
-                    <Plus class="w-6 h-6 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold">상품 등록</div>
-                      <div class="text-sky-100 text-xs mt-0.5">새 상품을 등록해보세요</div>
+                <!-- 신규 판매자 온보딩 -->
+                <div v-if="allProducts.length === 0" class="rounded-2xl border border-sky-100 overflow-hidden">
+                  <div class="bg-gradient-to-r from-sky-50 to-teal-50 px-6 py-5 border-b border-sky-100">
+                    <h3 class="font-bold text-slate-800 mb-1">판매를 시작할 준비가 됐나요?</h3>
+                    <p class="text-sm text-slate-500">아래 단계를 따라 첫 판매를 시작해보세요</p>
+                  </div>
+                  <div class="p-5 space-y-4">
+                    <div class="flex items-center gap-3">
+                      <CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                      <span class="text-sm text-slate-400 line-through">판매자 신청 승인</span>
                     </div>
-                  </button>
-                  <button
-                    @click="activeTab = 'orders'"
-                    class="flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-slate-700 rounded-2xl p-5 font-semibold transition-colors text-left border border-sky-100 relative"
-                  >
-                    <ShoppingBag class="w-6 h-6 text-sky-500 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold text-slate-800">주문 관리</div>
-                      <div class="text-slate-400 text-xs mt-0.5">주문 처리 및 배송 관리</div>
+                    <div class="flex items-center gap-3">
+                      <CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                      <span class="text-sm text-slate-400 line-through">스토어 프로필 설정</span>
                     </div>
-                    <span
-                      v-if="pendingOrders.length > 0"
-                      class="absolute top-3 right-3 bg-amber-400 text-white text-xs font-bold px-1.5 py-0.5 rounded-full"
-                    >{{ pendingOrders.length }}</span>
-                  </button>
-                  <button
-                    @click="router.push('/seller/auctions/new')"
-                    class="flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-slate-700 rounded-2xl p-5 font-semibold transition-colors text-left border border-sky-100"
-                  >
-                    <Gavel class="w-6 h-6 text-sky-500 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold text-slate-800">경매 등록</div>
-                      <div class="text-slate-400 text-xs mt-0.5">실시간 경매를 시작하세요</div>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-3">
+                        <div class="w-5 h-5 rounded-full border-2 border-sky-400 flex-shrink-0" />
+                        <span class="text-sm font-semibold text-slate-700">첫 상품 등록하기</span>
+                      </div>
+                      <button
+                        @click="goToNewProduct"
+                        class="flex items-center gap-1.5 text-xs bg-sky-500 text-white px-4 py-2 rounded-full font-semibold hover:bg-sky-600 transition-colors flex-shrink-0"
+                      >
+                        <Plus class="w-3.5 h-3.5" />
+                        상품 등록
+                      </button>
                     </div>
-                  </button>
-                  <button
-                    @click="activeTab = 'products'"
-                    class="flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-slate-700 rounded-2xl p-5 font-semibold transition-colors text-left border border-sky-100"
+                  </div>
+                </div>
+
+                <!-- 상품 목록 -->
+                <div v-else class="rounded-2xl border border-sky-100 overflow-hidden divide-y divide-sky-50">
+                  <div
+                    v-for="product in recentProducts"
+                    :key="product.id"
+                    class="group flex items-center gap-4 px-5 py-4 hover:bg-sky-50/50 transition-colors cursor-pointer"
+                    @click="router.push(`/seller/products/${product.id}/edit`)"
                   >
-                    <Package class="w-6 h-6 text-sky-500 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold text-slate-800">상품 관리</div>
-                      <div class="text-slate-400 text-xs mt-0.5">재고와 상태를 관리하세요</div>
+                    <!-- 썸네일 -->
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      <img v-if="getThumbnailUrl(product)" :src="getThumbnailUrl(product)!" :alt="product.name" class="w-full h-full object-cover" loading="lazy" />
+                      <Package v-else class="w-6 h-6 text-sky-300" />
                     </div>
-                  </button>
+                    <!-- 상품명 + 재고 -->
+                    <div class="flex-1 min-w-0">
+                      <p class="font-semibold text-slate-800 text-sm line-clamp-1">{{ product.name }}</p>
+                      <div class="flex items-center gap-2 mt-0.5">
+                        <p
+                          class="text-xs"
+                          :class="product.stock <= 5 && product.status === 'ACTIVE' ? 'text-orange-500 font-semibold' : 'text-slate-400'"
+                        >
+                          재고 {{ product.stock }}개
+                          <span v-if="product.stock <= 5 && product.status === 'ACTIVE'" class="ml-0.5">⚠️</span>
+                        </p>
+                      </div>
+                    </div>
+                    <!-- 가격 + 상태 -->
+                    <div class="flex items-center gap-3 flex-shrink-0">
+                      <p class="font-bold text-sky-600 text-sm">₩{{ product.price.toLocaleString() }}</p>
+                      <span class="text-xs font-semibold px-2.5 py-1 rounded-full" :class="statusBadge(product.status)">
+                        {{ statusText(product.status) }}
+                      </span>
+                      <Edit class="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-400 transition-colors" />
+                    </div>
+                  </div>
+                  <!-- 전체 보기 -->
+                  <div
+                    v-if="allProducts.length > 5"
+                    @click="setTab('products')"
+                    class="px-5 py-3 text-center text-sm text-sky-500 font-medium cursor-pointer hover:bg-sky-50 transition-colors"
+                  >
+                    전체 {{ allProducts.length }}개 상품 보기
+                  </div>
                 </div>
               </section>
 
@@ -407,17 +553,17 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
           </div>
 
           <!-- ── TAB: 내 상품 관리 ── -->
-          <div v-show="activeTab === 'products'">
+          <div v-if="mountedTabs.has('products')" v-show="activeTab === 'products'">
             <SellerProductList />
           </div>
 
           <!-- ── TAB: 주문 관리 ── -->
-          <div v-show="activeTab === 'orders'">
+          <div v-if="mountedTabs.has('orders')" v-show="activeTab === 'orders'">
             <SellerOrdersTab />
           </div>
 
           <!-- ── TAB: 내 경매 관리 ── -->
-          <div v-show="activeTab === 'auctions'">
+          <div v-if="mountedTabs.has('auctions')" v-show="activeTab === 'auctions'">
             <div class="flex items-center justify-between mb-6">
               <h1 class="text-3xl font-black text-slate-900">내 경매 관리</h1>
               <button

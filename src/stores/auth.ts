@@ -92,6 +92,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = await authApi.me()
     recordIssuedAt()
     scheduleRefresh()
+    initialized.value = true
     await useCartStore().fetchCart()
   }
 

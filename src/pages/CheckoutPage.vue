@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
+import { useAuthStore } from '@/stores/auth'
 import { orderApi } from '@/api'
 import { memberApi, type DeliveryAddressResponse } from '@/api/member.api'
 import {
@@ -18,6 +19,7 @@ import {
 
 const router = useRouter()
 const cartStore = useCartStore()
+const authStore = useAuthStore()
 const { checkedItems, subtotal, totalShippingFee, totalPrice } = storeToRefs(cartStore)
 
 // ── 배송지 ─────────────────────────────────────────────
@@ -198,7 +200,18 @@ const handleOrder = async () => {
     await cartStore.clearChecked()
     router.push('/orders/complete')
   } catch (e: any) {
-    alert(e?.response?.data?.message ?? '주문에 실패했습니다. 다시 시도해주세요.')
+    if (e?.response?.status === 403) {
+      // 내 상품이 포함된 경우 → 장바구니에서 제거 후 안내
+      const myNick = authStore.user?.nickName
+      if (myNick) {
+        const ownItems = checkedItems.value.filter(i => i.sellerNickName === myNick)
+        await Promise.all(ownItems.map(i => cartStore.removeItem(i.productId)))
+      }
+      alert('내가 등록한 상품은 구매할 수 없습니다. 해당 상품이 장바구니에서 제거되었습니다.')
+      router.push('/cart')
+    } else {
+      alert(e?.response?.data?.message ?? '주문에 실패했습니다. 다시 시도해주세요.')
+    }
   } finally {
     isSubmitting.value = false
   }

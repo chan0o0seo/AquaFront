@@ -45,9 +45,14 @@ async function toggleWishlist(product: ProductSummary, e: Event) {
   }
 }
 
+function isOwnProduct(product: ProductSummary) {
+  return authStore.isLoggedIn && !!authStore.user && product.sellerNickName === authStore.user.nickName
+}
+
 async function addToCart(product: ProductSummary, e: Event) {
   e.stopPropagation()
   if (!authStore.isLoggedIn) { router.push('/login'); return }
+  if (isOwnProduct(product)) return
   if (addingToCart.value.has(product.id)) return
   addingToCart.value.add(product.id)
   try {
@@ -174,10 +179,10 @@ onMounted(async () => {
                 <span v-if="product.shippingFee === 0" class="ml-1.5 text-xs text-emerald-500 font-medium">무료배송</span>
               </div>
               <button
-                class="p-2 bg-sky-50 text-sky-600 rounded-xl hover:bg-sky-500 hover:text-white transition-colors disabled:opacity-40"
-                :disabled="product.status === 'SOLD_OUT' || addingToCart.has(product.id)"
+                class="p-2 bg-sky-50 text-sky-600 rounded-xl hover:bg-sky-500 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="product.status === 'SOLD_OUT' || addingToCart.has(product.id) || isOwnProduct(product)"
+                :title="isOwnProduct(product) ? '내가 등록한 상품' : '장바구니 담기'"
                 @click="addToCart(product, $event)"
-                title="장바구니 담기"
               >
                 <Loader2 v-if="addingToCart.has(product.id)" class="w-4 h-4 animate-spin" />
                 <ShoppingCart v-else class="w-4 h-4" />
