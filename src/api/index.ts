@@ -14,6 +14,8 @@ export { paymentApi } from './payment.api'
 export { settlementApi } from './settlement.api'
 export { notificationApi } from './notification.api'
 export type { NotificationItem, NotificationType as NotificationTypeEnum } from './notification.api'
+export { adminApi } from './admin.api'
+export type { AdminMemberResponse, AdminMemberPage, AdminPage, MemberRole, AdminProductResponse, AdminProductStatus, AdminAuctionResponse, AdminAuctionStatus, AdminPostResponse } from './admin.api'
 
 
 export type { BoardCategoryResponse, PostSummaryResponse, PostDetailResponse, CommentResponse } from './community.api'
