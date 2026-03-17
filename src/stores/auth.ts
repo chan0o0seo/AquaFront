@@ -111,9 +111,15 @@ export const useAuthStore = defineStore('auth', () => {
     await authApi.updateNickName({ nickName })
   }
 
+  async function updateProfileImage(profileImageUrl: string) {
+    const { memberApi } = await import('@/api/member.api')
+    await memberApi.updateProfileImage(profileImageUrl)
+    if (user.value) user.value.profileImageUrl = profileImageUrl
+  }
+
   async function withdraw(password: string) {
     await authApi.withdraw({ password })
   }
 
-  return { user, initialized, isLoggedIn, isSeller, isAdmin, fetchMe, login, logout, updateNickName, withdraw, clear }
+  return { user, initialized, isLoggedIn, isSeller, isAdmin, fetchMe, login, logout, updateNickName, updateProfileImage, withdraw, clear }
 })

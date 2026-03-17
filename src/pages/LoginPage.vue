@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Fish, Eye, EyeOff, AlertCircle, X, CheckCircle2, Loader2, Check } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
 import { checkPasswordRules, isPasswordValid } from '@/utils/password'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 // ── 로그인 ────────────────────────────────────────────────────
@@ -26,7 +27,8 @@ const handleLogin = async () => {
   hasError.value = false
   try {
     await authStore.login(email.value, password.value)
-    router.push('/')
+    const redirect = route.query.redirect as string | undefined
+    router.push(redirect && redirect.startsWith('/') ? redirect : '/')
   } catch (err: any) {
     hasError.value = true
     errorMessage.value = err?.response?.data?.message ?? '이메일 또는 비밀번호가 올바르지 않습니다.'
