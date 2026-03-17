@@ -78,6 +78,8 @@ export const useAuthStore = defineStore('auth', () => {
       }
       scheduleRefresh()
       await useCartStore().fetchCart()
+      // FCM 토큰 등록 (비동기 - 실패해도 로그인 흐름에 영향 없음)
+      import('@/composables/useFcm').then(({ registerFcmToken }) => registerFcmToken())
     } catch {
       user.value = null
       clearTimer()
@@ -94,6 +96,8 @@ export const useAuthStore = defineStore('auth', () => {
     scheduleRefresh()
     initialized.value = true
     await useCartStore().fetchCart()
+    // FCM 토큰 등록 (비동기 - 실패해도 로그인 흐름에 영향 없음)
+    import('@/composables/useFcm').then(({ registerFcmToken }) => registerFcmToken())
   }
 
   async function logout() {

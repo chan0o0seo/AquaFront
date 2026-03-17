@@ -11,6 +11,7 @@ import SellerProductList from '@/components/seller/SellerProductList.vue'
 import SellerOrdersTab from '@/components/seller/SellerOrdersTab.vue'
 import { useSellerApplication } from '@/composables/useSellerApplication'
 import { sellerApi, auctionApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
+
 import type { OrderResponse } from '@/api/order.api'
 
 const router = useRouter()
@@ -18,7 +19,7 @@ const route = useRoute()
 const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
-const activeTab = ref<'home' | 'products' | 'auctions' | 'orders'>('home')
+const activeTab = ref<'home' | 'products' | 'auctions' | 'orders' | 'settlements'>('home')
 // 한 번 활성화된 탭은 DOM에서 제거하지 않음 (remount 방지)
 const mountedTabs = ref(new Set<string>(['home']))
 function setTab(tab: 'home' | 'products' | 'auctions' | 'orders') {
