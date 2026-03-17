@@ -33,6 +33,13 @@ export interface DeliveryAddressResponse {
   createdAt: string
 }
 
+export type NotificationType = 'AUCTION_ENDING' | 'FOLLOWED_NEW_PRODUCT' | 'ORDER_DELIVERY' | 'MARKETING'
+
+export interface NotificationSettingResponse {
+  type: NotificationType
+  enabled: boolean
+}
+
 export const memberApi = {
   // PATCH /api/members/me — 프로필 수정 (name, nickName, phoneNumber, profileImageUrl, marketingAgreed)
   updateProfile: (body: ProfileUpdateRequest) =>
@@ -82,4 +89,14 @@ export const memberApi = {
     api.patch<{ success: boolean; data: DeliveryAddressResponse; message: string }>(
       `/members/me/addresses/${id}/default`
     ).then(unwrap),
+
+  // GET /api/members/me/notifications/settings — 알림 설정 목록
+  getNotificationSettings: () =>
+    api.get<{ success: boolean; data: NotificationSettingResponse[]; message: string }>(
+      '/members/me/notifications/settings'
+    ).then(unwrap),
+
+  // PATCH /api/members/me/notifications/settings/:type — 알림 켜기/끄기
+  updateNotificationSetting: (type: NotificationType, enabled: boolean) =>
+    api.patch(`/members/me/notifications/settings/${type}`, { enabled }),
 }

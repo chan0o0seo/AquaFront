@@ -1,0 +1,337 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-03-14T12:20:04.892Z",
+  "activeFeatures": [
+    "api",
+    "AquaFront"
+  ],
+  "primaryFeature": "api",
+  "features": {
+    "api": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-14T07:26:52.828Z",
+        "lastUpdated": "2026-03-14T12:20:04.892Z"
+      },
+      "lastFile": "C:\\Users\\zxsa9\\Desktop\\AquaHubFront\\AquaFront\\src\\api\\index.ts"
+    },
+    "AquaFront": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-14T07:29:50.145Z",
+        "lastUpdated": "2026-03-14T09:36:23.540Z"
+      },
+      "lastFile": "C:\\Users\\zxsa9\\Desktop\\AquaHubFront\\AquaFront\\src\\pages\\MyPage.vue"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-03-14T07:00:54.792Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-03-14T12:20:04.892Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-03-14T07:26:52.828Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:27:17.343Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:27:25.699Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:27:37.533Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:27:39.302Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:27:46.162Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:28:00.562Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:28:21.090Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:29:50.145Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:29:59.994Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:30:08.817Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:30:14.471Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:30:35.238Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:30:41.872Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:31:01.401Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:31:40.526Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:43:48.935Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:44:05.485Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:44:50.398Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:45:14.258Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:45:29.409Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:45:35.163Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:45:55.434Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:49:56.286Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:50:10.611Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:50:23.977Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:52:09.978Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:52:32.314Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:52:49.876Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:52:58.017Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:57:03.260Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T07:57:26.677Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T08:01:07.036Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T08:03:40.830Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:14:09.534Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:14:21.979Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:14:27.703Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:14:36.042Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:14:54.506Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:15:03.764Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:15:09.167Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:21:27.402Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:21:35.141Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:35:51.781Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:36:04.483Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:36:16.216Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T09:36:23.540Z",
+      "feature": "AquaFront",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-14T12:20:04.892Z",
+      "feature": "api",
+      "phase": "do",
+      "action": "updated"
+    }
+  ]
+}

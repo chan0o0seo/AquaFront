@@ -83,6 +83,21 @@ export interface FollowedSellerResponse {
   storeDescription?: string
 }
 
+export interface CommissionPolicyResponse {
+  id: number
+  productType: string | null    // null = 전체 적용
+  rate: number                  // 수수료율 (%, 예: 5.0)
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CommissionPolicyRequest {
+  productType?: string
+  rate: number
+  description?: string
+}
+
 export const sellerApi = {
   // ── 판매자 신청 ──────────────────────────────────
   // POST /api/seller-applications
@@ -209,26 +224,57 @@ export const sellerApi = {
     api.get<{ success: boolean; data: SellerStats; message: string }>('/seller/stats')
       .then(unwrap),
 
+  // ── 상품 이미지 (개별 관리) ────────────────────────
+  uploadProductImages: (productId: number, formData: FormData) =>
+    api.post<{ success: boolean; data: import('./product.api').ProductImage[]; message: string }>(
+      `/products/${productId}/images`, formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(unwrap),
+
+  reorderProductImages: (productId: number, imageIds: number[]) =>
+    api.patch(`/products/${productId}/images/order`, { imageIds }),
+
+  setRepresentativeImage: (productId: number, imageId: number) =>
+    api.patch(`/products/${productId}/images/${imageId}/representative`),
+
+  deleteProductImage: (productId: number, imageId: number) =>
+    api.delete(`/products/${productId}/images/${imageId}`),
+
+  // ── 수수료 정책 (관리자) ───────────────────────────
+  getCommissionPolicies: () =>
+    api.get<{ success: boolean; data: CommissionPolicyResponse[]; message: string }>(
+      '/admin/commission-policies'
+    ).then(unwrap),
+
+  createCommissionPolicy: (body: CommissionPolicyRequest) =>
+    api.post<{ success: boolean; data: CommissionPolicyResponse; message: string }>(
+      '/admin/commission-policies', body
+    ).then(unwrap),
+
+  updateCommissionPolicy: (id: number, body: CommissionPolicyRequest) =>
+    api.put<{ success: boolean; data: CommissionPolicyResponse; message: string }>(
+      `/admin/commission-policies/${id}`, body
+    ).then(unwrap),
+
+  deleteCommissionPolicy: (id: number) =>
+    api.delete(`/admin/commission-policies/${id}`),
+
   // ── 판매자 주문 관리 ──────────────────────────────
-  // GET /api/seller/orders?status=
   getSellerOrders: (status?: string) =>
     api.get<{ success: boolean; data: import('./order.api').OrderResponse[]; message: string }>(
       '/seller/orders', { params: status ? { status } : {} }
     ).then(unwrap),
 
-  // PATCH /api/seller/orders/:orderId/ship — 송장 등록 → 배송중
   shipOrder: (orderId: number, body: { courier: string; trackingNumber: string }) =>
     api.patch<{ success: boolean; data: import('./order.api').OrderResponse; message: string }>(
       `/seller/orders/${orderId}/ship`, body
     ).then(unwrap),
 
-  // PATCH /api/seller/orders/:orderId/deliver — 배송완료 처리
   deliverOrder: (orderId: number) =>
     api.patch<{ success: boolean; data: import('./order.api').OrderResponse; message: string }>(
       `/seller/orders/${orderId}/deliver`
     ).then(unwrap),
 
-  // PATCH /api/seller/orders/:orderId/cancel — 판매자 취소
   cancelSellerOrder: (orderId: number) =>
     api.patch(`/seller/orders/${orderId}/cancel`),
 }
