@@ -3,36 +3,22 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard, Package, Plus, Gavel, TrendingUp,
-<<<<<<< HEAD
-  Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy,
-  Banknote, CreditCard, Download, Calendar
-=======
   Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy, ShoppingBag,
-  AlertCircle, MapPin, ArrowRight
->>>>>>> origin/main
+  AlertCircle, MapPin, ArrowRight, CreditCard, Calendar, Download, Banknote
 } from 'lucide-vue-next'
 import SellerStatsGrid from '@/components/seller/SellerStatsGrid.vue'
 import SellerProductList from '@/components/seller/SellerProductList.vue'
 import SellerOrdersTab from '@/components/seller/SellerOrdersTab.vue'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-<<<<<<< HEAD
-import { sellerApi, auctionApi, settlementApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
-import type { SettlementResponse, SettlementAccountResponse, SettlementAccountRequest, MonthlySettlementReport } from '@/api'
-=======
-import { sellerApi, auctionApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
+import { sellerApi, auctionApi, settlementApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse, type SettlementResponse, type SettlementAccountResponse, type SettlementAccountRequest, type MonthlySettlementReport } from '@/api'
 import type { OrderResponse } from '@/api/order.api'
->>>>>>> origin/main
 
 const router = useRouter()
 const route = useRoute()
 const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
-<<<<<<< HEAD
-const activeTab = ref<'home' | 'products' | 'auctions' | 'settlements'>('home')
-=======
-const activeTab = ref<'home' | 'products' | 'auctions' | 'orders'>('home')
->>>>>>> origin/main
+const activeTab = ref<'home' | 'products' | 'auctions' | 'orders' | 'settlements'>('home')
 
 // 내 경매 목록
 const myAuctions = ref<AuctionResponse[]>([])
@@ -197,17 +183,10 @@ async function saveAccount() {
 
 // Seller sidebar nav
 const navItems = [
-<<<<<<< HEAD
-  { key: 'home',        icon: LayoutDashboard, label: '판매자 홈' },
-  { key: 'products',    icon: Package,         label: '내 상품 관리' },
-  { key: 'auctions',    icon: Gavel,           label: '내 경매 관리' },
-  { key: 'settlements', icon: Banknote,        label: '정산 관리' },
-=======
   { key: 'home',     icon: LayoutDashboard, label: '판매자 홈' },
   { key: 'products', icon: Package,         label: '내 상품 관리' },
   { key: 'orders',   icon: ShoppingBag,     label: '주문 관리' },
   { key: 'auctions', icon: Gavel,           label: '내 경매 관리' },
->>>>>>> origin/main
 ]
 
 const goToNewProduct = () => router.push('/seller/products/new')
@@ -267,11 +246,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
               <button
                 v-for="item in navItems"
                 :key="item.key"
-<<<<<<< HEAD
-                @click="activeTab = item.key as 'home' | 'products' | 'auctions' | 'settlements'; if (item.key === 'auctions') loadMyAuctions(); if (item.key === 'settlements') loadSettlements()"
-=======
                 @click="activeTab = item.key as 'home' | 'products' | 'orders' | 'auctions'; if (item.key === 'auctions') loadMyAuctions()"
->>>>>>> origin/main
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer
                        transition-colors duration-150 text-left"
                 :class="activeTab === item.key
