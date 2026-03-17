@@ -4,13 +4,14 @@ import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard, Package, Plus, Gavel, TrendingUp,
   Bell, Settings, ChevronRight, Edit, Loader2, Clock, Trophy, ShoppingBag,
-  AlertCircle, MapPin, ArrowRight, CreditCard, Calendar, Download, Banknote
+  AlertCircle, MapPin, ArrowRight, CheckCircle2
 } from 'lucide-vue-next'
 import SellerStatsGrid from '@/components/seller/SellerStatsGrid.vue'
 import SellerProductList from '@/components/seller/SellerProductList.vue'
 import SellerOrdersTab from '@/components/seller/SellerOrdersTab.vue'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-import { sellerApi, auctionApi, settlementApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse, type SettlementResponse, type SettlementAccountResponse, type SettlementAccountRequest, type MonthlySettlementReport } from '@/api'
+import { sellerApi, auctionApi, getThumbnailUrl, type SellerStats, type ProductDetail, type AuctionResponse } from '@/api'
+
 import type { OrderResponse } from '@/api/order.api'
 
 const router = useRouter()
@@ -19,6 +20,12 @@ const { profileData, fetchProfile } = useSellerApplication()
 
 // Active tab
 const activeTab = ref<'home' | 'products' | 'auctions' | 'orders' | 'settlements'>('home')
+// 한 번 활성화된 탭은 DOM에서 제거하지 않음 (remount 방지)
+const mountedTabs = ref(new Set<string>(['home']))
+function setTab(tab: 'home' | 'products' | 'auctions' | 'orders') {
+  activeTab.value = tab
+  mountedTabs.value.add(tab)
+}
 
 // 내 경매 목록
 const myAuctions = ref<AuctionResponse[]>([])
@@ -53,15 +60,40 @@ function formatDateTime(iso: string) {
 }
 
 const stats = ref<SellerStats | null>(null)
+const allProducts   = ref<ProductDetail[]>([])
 const recentProducts = ref<ProductDetail[]>([])
 const pendingOrders = ref<OrderResponse[]>([])
 const isLoadingHome = ref(false)
 
 const formatPrice = (n: number) => '₩' + n.toLocaleString()
 
+// ── 인사말 ────────────────────────────────────────────
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return '좋은 아침이에요'
+  if (h < 18) return '안녕하세요'
+  return '수고하셨어요'
+})
+const todayStr = new Date().toLocaleDateString('ko-KR', {
+  year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
+})
+
+// ── 상품 현황 파생 ────────────────────────────────────
+const activeProductCount = computed(() => allProducts.value.filter(p => p.status === 'ACTIVE').length)
+const soldOutCount       = computed(() => allProducts.value.filter(p => p.status === 'SOLD_OUT').length)
+const lowStockCount      = computed(() => allProducts.value.filter(p => p.status === 'ACTIVE' && p.stock > 0 && p.stock <= 5).length)
+
+// 처리 필요 항목 존재 여부
+const hasActionItems = computed(() =>
+  pendingOrders.value.length > 0 ||
+  soldOutCount.value > 0 ||
+  lowStockCount.value > 0 ||
+  (stats.value?.activeAuctions ?? 0) > 0
+)
+
 onMounted(async () => {
   if (route.query.tab === 'auctions') {
-    activeTab.value = 'auctions'
+    setTab('auctions')
     loadMyAuctions(true)
   }
   isLoadingHome.value = true
@@ -72,9 +104,10 @@ onMounted(async () => {
       sellerApi.getMyProducts(),
       sellerApi.getSellerOrders('PAID'),
     ])
-    stats.value = statsData
+    stats.value       = statsData
+    allProducts.value = productsData
     recentProducts.value = productsData.slice(0, 5)
-    pendingOrders.value = pendingData
+    pendingOrders.value  = pendingData
   } catch (e) {
     console.error('Failed to load seller dashboard', e)
   } finally {
@@ -91,94 +124,6 @@ const statusText = (status: string) => {
   if (status === 'ACTIVE')   return '판매중'
   if (status === 'SOLD_OUT') return '품절'
   return '삭제됨'
-}
-
-// ── 정산 ──────────────────────────────────────────
-const settlements = ref<SettlementResponse[]>([])
-const settlementAccount = ref<SettlementAccountResponse | null>(null)
-const monthlyReport = ref<MonthlySettlementReport | null>(null)
-const isLoadingSettlements = ref(false)
-const settlementAccountLoaded = ref(false)
-
-const now = new Date()
-const reportYear = ref(now.getFullYear())
-const reportMonth = ref(now.getMonth() + 1)
-
-const showAccountForm = ref(false)
-const isSavingAccount = ref(false)
-const accountForm = ref<SettlementAccountRequest>({ bankName: '', accountNumber: '', accountHolder: '' })
-
-const SETTLEMENT_STATUS_LABEL: Record<string, string> = {
-  PENDING: '대기', PROCESSING: '처리 중', COMPLETED: '완료', FAILED: '실패',
-}
-const SETTLEMENT_STATUS_CLASS: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-700',
-  PROCESSING: 'bg-sky-100 text-sky-600',
-  COMPLETED: 'bg-emerald-100 text-emerald-700',
-  FAILED: 'bg-red-100 text-red-600',
-}
-
-async function loadSettlements() {
-  if (settlements.value.length > 0 && settlementAccountLoaded.value) return
-  isLoadingSettlements.value = true
-  try {
-    const [list] = await Promise.all([settlementApi.getSettlements()])
-    settlements.value = list
-    try {
-      settlementAccount.value = await settlementApi.getAccount()
-    } catch {
-      settlementAccount.value = null
-    }
-    settlementAccountLoaded.value = true
-  } finally {
-    isLoadingSettlements.value = false
-  }
-}
-
-async function loadMonthlyReport() {
-  try {
-    monthlyReport.value = await settlementApi.getMonthlyReport(reportYear.value, reportMonth.value)
-  } catch {
-    monthlyReport.value = null
-  }
-}
-
-async function downloadPdf(settlementId: number) {
-  try {
-    const res = await settlementApi.downloadPdf(settlementId)
-    const url = URL.createObjectURL(new Blob([res.data]))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `settlement-${settlementId}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch {
-    alert('PDF 다운로드에 실패했습니다.')
-  }
-}
-
-function openAccountForm() {
-  accountForm.value = settlementAccount.value
-    ? { bankName: settlementAccount.value.bankName, accountNumber: settlementAccount.value.accountNumber, accountHolder: settlementAccount.value.accountHolder }
-    : { bankName: '', accountNumber: '', accountHolder: '' }
-  showAccountForm.value = true
-}
-
-async function saveAccount() {
-  if (isSavingAccount.value) return
-  isSavingAccount.value = true
-  try {
-    if (settlementAccount.value) {
-      settlementAccount.value = await settlementApi.updateAccount(accountForm.value)
-    } else {
-      settlementAccount.value = await settlementApi.createAccount(accountForm.value)
-    }
-    showAccountForm.value = false
-  } catch (e: any) {
-    alert(e?.response?.data?.message ?? '저장에 실패했습니다.')
-  } finally {
-    isSavingAccount.value = false
-  }
 }
 
 // Seller sidebar nav
@@ -246,7 +191,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
               <button
                 v-for="item in navItems"
                 :key="item.key"
-                @click="activeTab = item.key as 'home' | 'products' | 'orders' | 'auctions'; if (item.key === 'auctions') loadMyAuctions()"
+                @click="setTab(item.key as any); if (item.key === 'auctions') loadMyAuctions()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer
                        transition-colors duration-150 text-left"
                 :class="activeTab === item.key
@@ -257,7 +202,6 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                 <span>{{ item.label }}</span>
               </button>
             </nav>
-
 
             <!-- Shortcuts -->
             <div class="space-y-1 border-t border-sky-100 pt-4">
@@ -270,7 +214,7 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                 상품 등록
               </button>
               <button
-                @click="activeTab = 'auctions'; loadMyAuctions()"
+                @click="setTab('auctions'); loadMyAuctions()"
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left
                        text-slate-600 hover:bg-sky-50 hover:text-sky-600 transition-colors"
               >
@@ -310,61 +254,169 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
 
           <!-- ── TAB: 판매자 홈 ── -->
           <div v-show="activeTab === 'home'">
-            <div class="flex items-center justify-between mb-6">
-              <h1 class="text-3xl font-black text-slate-900">판매자 홈</h1>
-              <span class="text-sm text-slate-400">{{ new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) }}</span>
-            </div>
 
-            <!-- Loading -->
-            <div v-if="isLoadingHome" class="flex justify-center py-16">
-              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
+            <!-- ── 스켈레톤 로딩 ── -->
+            <div v-if="isLoadingHome" class="animate-pulse space-y-6">
+              <!-- 인사말 -->
+              <div class="flex items-center justify-between">
+                <div class="space-y-2">
+                  <div class="h-3.5 w-24 bg-slate-100 rounded-full" />
+                  <div class="h-7 w-48 bg-slate-200 rounded-full" />
+                </div>
+                <div class="h-4 w-32 bg-slate-100 rounded-full" />
+              </div>
+              <!-- 액션 카드 -->
+              <div class="grid grid-cols-3 gap-3">
+                <div v-for="i in 3" :key="i" class="h-20 rounded-2xl bg-slate-100" />
+              </div>
+              <!-- 스탯 -->
+              <div class="grid grid-cols-5 gap-3">
+                <div class="col-span-2 h-24 rounded-2xl bg-slate-100" />
+                <div v-for="i in 3" :key="i" class="h-24 rounded-2xl bg-slate-100" />
+              </div>
+              <!-- 주문 목록 -->
+              <div class="rounded-2xl border border-sky-50 overflow-hidden">
+                <div class="h-12 bg-slate-50 border-b border-sky-50 px-5 flex items-center gap-3">
+                  <div class="h-4 w-24 bg-slate-200 rounded-full" />
+                </div>
+                <div v-for="i in 3" :key="i" class="flex items-center gap-4 px-5 py-4 border-b border-sky-50 last:border-0">
+                  <div class="w-9 h-9 rounded-xl bg-slate-100 flex-shrink-0" />
+                  <div class="flex-1 space-y-1.5">
+                    <div class="h-3.5 w-2/3 bg-slate-100 rounded-full" />
+                    <div class="h-3 w-1/3 bg-slate-100 rounded-full" />
+                  </div>
+                  <div class="w-16 h-4 bg-slate-100 rounded-full" />
+                </div>
+              </div>
+              <!-- 상품 목록 -->
+              <div class="rounded-2xl border border-sky-50 overflow-hidden">
+                <div v-for="i in 4" :key="i" class="flex items-center gap-4 px-5 py-4 border-b border-sky-50 last:border-0">
+                  <div class="w-12 h-12 rounded-xl bg-slate-100 flex-shrink-0" />
+                  <div class="flex-1 space-y-1.5">
+                    <div class="h-3.5 w-1/2 bg-slate-100 rounded-full" />
+                    <div class="h-3 w-1/4 bg-slate-100 rounded-full" />
+                  </div>
+                  <div class="w-14 h-4 bg-slate-100 rounded-full" />
+                </div>
+              </div>
             </div>
 
             <template v-else>
 
-              <!-- 신규 주문 알림 배너 -->
-              <div
-                v-if="pendingOrders.length > 0"
-                class="mb-6 flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 cursor-pointer hover:bg-amber-100 transition-colors"
-                @click="activeTab = 'orders'"
-              >
-                <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
-                    <AlertCircle class="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <div class="font-bold text-amber-800">신규 주문 {{ pendingOrders.length }}건이 처리를 기다리고 있습니다</div>
-                    <div class="text-xs text-amber-600 mt-0.5">송장을 등록하여 배송을 시작해주세요</div>
-                  </div>
+              <!-- ── 인사말 헤더 ── -->
+              <div class="flex items-start justify-between mb-7">
+                <div>
+                  <p class="text-sm text-sky-500 font-semibold mb-1">{{ greeting }},</p>
+                  <h1 class="text-2xl font-black text-slate-900">
+                    {{ profileData?.businessName ?? '판매자' }}님 👋
+                  </h1>
                 </div>
-                <div class="flex items-center gap-1 text-amber-600 font-semibold text-sm flex-shrink-0">
-                  주문 관리
-                  <ArrowRight class="w-4 h-4" />
+                <span class="text-sm text-slate-400 mt-1 flex-shrink-0">{{ todayStr }}</span>
+              </div>
+
+              <!-- ── 처리 필요 항목 ── -->
+              <div class="mb-7">
+                <!-- 모두 처리됨 -->
+                <div
+                  v-if="!hasActionItems"
+                  class="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl px-5 py-3.5"
+                >
+                  <CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                  <p class="text-sm font-semibold text-emerald-700">처리할 업무가 없어요</p>
+                  <p class="text-sm text-emerald-500">오늘도 수고 많으셨습니다!</p>
+                </div>
+
+                <!-- 처리 필요 항목 카드들 -->
+                <div v-else class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+                  <!-- 신규 주문 -->
+                  <button
+                    v-if="pendingOrders.length > 0"
+                    @click="setTab('orders')"
+                    class="group flex items-center gap-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left hover:bg-amber-100 hover:border-amber-300 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
+                      <ShoppingBag class="w-5 h-5 text-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-amber-700 leading-none">{{ pendingOrders.length }}<span class="text-base font-bold ml-0.5">건</span></p>
+                      <p class="text-xs text-amber-600 mt-1 font-medium">신규 주문 처리 필요</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-amber-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
+                  <!-- 품절 상품 -->
+                  <button
+                    v-if="soldOutCount > 0"
+                    @click="setTab('products')"
+                    class="group flex items-center gap-4 bg-red-50 border border-red-200 rounded-2xl p-4 text-left hover:bg-red-100 hover:border-red-300 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-red-400 flex items-center justify-center flex-shrink-0">
+                      <Package class="w-5 h-5 text-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-red-700 leading-none">{{ soldOutCount }}<span class="text-base font-bold ml-0.5">개</span></p>
+                      <p class="text-xs text-red-600 mt-1 font-medium">품절 상품 재입고 필요</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-red-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
+                  <!-- 재고 부족 (품절은 없지만 임박한 경우) -->
+                  <button
+                    v-else-if="lowStockCount > 0"
+                    @click="setTab('products')"
+                    class="group flex items-center gap-4 bg-orange-50 border border-orange-200 rounded-2xl p-4 text-left hover:bg-orange-100 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-orange-400 flex items-center justify-center flex-shrink-0">
+                      <AlertCircle class="w-5 h-5 text-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-orange-700 leading-none">{{ lowStockCount }}<span class="text-base font-bold ml-0.5">개</span></p>
+                      <p class="text-xs text-orange-600 mt-1 font-medium">재고 부족 상품 확인 필요</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-orange-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
+                  <!-- 진행 중 경매 -->
+                  <button
+                    v-if="stats?.activeAuctions"
+                    @click="setTab('auctions'); loadMyAuctions()"
+                    class="group flex items-center gap-4 bg-red-50 border border-red-100 rounded-2xl p-4 text-left hover:bg-red-100 transition-all"
+                  >
+                    <div class="w-11 h-11 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0 relative">
+                      <Gavel class="w-5 h-5 text-white" />
+                      <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-300 rounded-full animate-pulse border-2 border-white" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-2xl font-black text-red-700 leading-none">{{ stats.activeAuctions }}<span class="text-base font-bold ml-0.5">건</span></p>
+                      <p class="text-xs text-red-500 mt-1 font-medium">LIVE 경매 진행 중</p>
+                    </div>
+                    <ArrowRight class="w-4 h-4 text-red-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                  </button>
+
                 </div>
               </div>
 
-              <!-- Stats grid -->
+              <!-- ── 통계 그리드 ── -->
               <SellerStatsGrid :stats="stats ?? { totalProducts: 0, soldCount: 0, activeAuctions: 0, followerCount: profileData?.followerCount ?? 0, monthlyRevenue: 0 }" />
 
-              <!-- 신규 주문 미리보기 -->
+              <!-- ── 신규 주문 미리보기 ── -->
               <section v-if="pendingOrders.length > 0" class="mt-8">
                 <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-xl font-bold text-slate-900">처리 필요 주문</h2>
+                  <h2 class="text-lg font-bold text-slate-900">처리 대기 주문</h2>
                   <button
-                    @click="activeTab = 'orders'"
+                    @click="setTab('orders')"
                     class="flex items-center gap-1 text-sm text-sky-500 hover:text-sky-600 font-semibold transition-colors"
                   >
-                    전체 보기
-                    <ChevronRight class="w-4 h-4" />
+                    전체 보기 <ChevronRight class="w-4 h-4" />
                   </button>
                 </div>
-                <div class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
+                <div class="rounded-2xl border border-sky-100 overflow-hidden divide-y divide-sky-50">
                   <div
-                    v-for="(order, idx) in pendingOrders.slice(0, 3)"
+                    v-for="order in pendingOrders.slice(0, 3)"
                     :key="order.orderId"
-                    class="flex items-center gap-4 px-5 py-4 hover:bg-sky-50/50 transition-colors cursor-pointer"
-                    :class="{ 'border-b border-sky-50': idx < Math.min(pendingOrders.length, 3) - 1 }"
-                    @click="activeTab = 'orders'"
+                    @click="setTab('orders')"
+                    class="flex items-center gap-4 px-5 py-4 hover:bg-sky-50/50 transition-colors cursor-pointer group"
                   >
                     <div class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
                       <ShoppingBag class="w-4 h-4 text-amber-500" />
@@ -381,119 +433,120 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
                         <span class="truncate">{{ order.address }}</span>
                       </div>
                     </div>
-                    <div class="text-right flex-shrink-0">
+                    <div class="flex items-center gap-3 flex-shrink-0">
                       <p class="font-bold text-sky-600 text-sm">{{ formatPrice(order.totalAmount) }}</p>
-                      <span class="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full font-medium">신규</span>
+                      <span class="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-semibold group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                        송장 등록
+                      </span>
                     </div>
                   </div>
                   <div
                     v-if="pendingOrders.length > 3"
-                    class="px-5 py-3 text-center text-sm text-sky-500 font-medium border-t border-sky-50 cursor-pointer hover:bg-sky-50 transition-colors"
-                    @click="activeTab = 'orders'"
+                    @click="setTab('orders')"
+                    class="px-5 py-3 text-center text-sm text-sky-500 font-medium cursor-pointer hover:bg-sky-50 transition-colors"
                   >
                     + {{ pendingOrders.length - 3 }}건 더 보기
                   </div>
                 </div>
               </section>
 
-              <!-- 내 상품 현황 -->
+              <!-- ── 내 상품 현황 ── -->
               <section class="mt-8">
                 <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-xl font-bold text-slate-900">내 상품 현황</h2>
+                  <div class="flex items-center gap-3 flex-wrap">
+                    <h2 class="text-lg font-bold text-slate-900">내 상품 현황</h2>
+                    <div v-if="allProducts.length > 0" class="flex gap-1.5">
+                      <span class="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                        판매중 {{ activeProductCount }}
+                      </span>
+                      <span v-if="soldOutCount > 0" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-semibold">
+                        품절 {{ soldOutCount }}
+                      </span>
+                    </div>
+                  </div>
                   <button
-                    @click="activeTab = 'products'"
-                    class="flex items-center gap-1 text-sm text-sky-500 hover:text-sky-600 font-semibold transition-colors"
+                    v-if="allProducts.length > 0"
+                    @click="setTab('products')"
+                    class="flex items-center gap-1 text-sm text-sky-500 hover:text-sky-600 font-semibold transition-colors flex-shrink-0"
                   >
-                    전체 상품 관리
-                    <ChevronRight class="w-4 h-4" />
+                    전체 보기 <ChevronRight class="w-4 h-4" />
                   </button>
                 </div>
 
-                <div v-if="recentProducts.length === 0" class="bg-sky-50 rounded-2xl border border-sky-100 py-10 text-center">
-                  <Package class="w-10 h-10 text-sky-200 mx-auto mb-3" />
-                  <p class="text-slate-400 text-sm mb-3">등록된 상품이 없습니다</p>
-                  <button @click="goToNewProduct" class="text-sm font-semibold text-sky-500 hover:text-sky-600">첫 상품 등록하기 →</button>
-                </div>
-
-                <div v-else class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
-                  <div
-                    v-for="(product, idx) in recentProducts"
-                    :key="product.id"
-                    class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-sky-50/50 cursor-pointer"
-                    :class="{ 'border-b border-sky-50': idx < recentProducts.length - 1 }"
-                    @click="router.push(`/products/${product.id}`)"
-                  >
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      <img v-if="getThumbnailUrl(product)" :src="getThumbnailUrl(product)!" :alt="product.name" class="w-full h-full object-cover" />
-                      <Package v-else class="w-6 h-6 text-sky-300" />
+                <!-- 신규 판매자 온보딩 -->
+                <div v-if="allProducts.length === 0" class="rounded-2xl border border-sky-100 overflow-hidden">
+                  <div class="bg-gradient-to-r from-sky-50 to-teal-50 px-6 py-5 border-b border-sky-100">
+                    <h3 class="font-bold text-slate-800 mb-1">판매를 시작할 준비가 됐나요?</h3>
+                    <p class="text-sm text-slate-500">아래 단계를 따라 첫 판매를 시작해보세요</p>
+                  </div>
+                  <div class="p-5 space-y-4">
+                    <div class="flex items-center gap-3">
+                      <CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                      <span class="text-sm text-slate-400 line-through">판매자 신청 승인</span>
                     </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="font-semibold text-slate-800 text-sm line-clamp-1">{{ product.name }}</p>
-                      <p class="text-slate-400 text-xs mt-0.5">재고 {{ product.stock }}개</p>
+                    <div class="flex items-center gap-3">
+                      <CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                      <span class="text-sm text-slate-400 line-through">스토어 프로필 설정</span>
                     </div>
-
-                  <!-- Price & Status -->
-                    <div class="text-right flex-shrink-0">
-                      <p class="font-bold text-sky-600 text-sm">₩{{ product.price.toLocaleString() }}</p>
-                    <span
-                      class="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-                      :class="statusBadge(product.status)"
-                    >{{ statusText(product.status) }}</span>
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-3">
+                        <div class="w-5 h-5 rounded-full border-2 border-sky-400 flex-shrink-0" />
+                        <span class="text-sm font-semibold text-slate-700">첫 상품 등록하기</span>
+                      </div>
+                      <button
+                        @click="goToNewProduct"
+                        class="flex items-center gap-1.5 text-xs bg-sky-500 text-white px-4 py-2 rounded-full font-semibold hover:bg-sky-600 transition-colors flex-shrink-0"
+                      >
+                        <Plus class="w-3.5 h-3.5" />
+                        상품 등록
+                      </button>
                     </div>
                   </div>
                 </div>
-              </section>
 
-              <!-- 빠른 메뉴 -->
-              <section class="mt-8">
-                <h2 class="text-xl font-bold text-slate-900 mb-4">빠른 메뉴</h2>
-                <div class="grid grid-cols-2 gap-3">
-                  <button
-                    @click="goToNewProduct"
-                    class="flex items-center gap-3 bg-sky-500 hover:bg-sky-600 text-white rounded-2xl p-5 font-semibold transition-colors text-left"
+                <!-- 상품 목록 -->
+                <div v-else class="rounded-2xl border border-sky-100 overflow-hidden divide-y divide-sky-50">
+                  <div
+                    v-for="product in recentProducts"
+                    :key="product.id"
+                    class="group flex items-center gap-4 px-5 py-4 hover:bg-sky-50/50 transition-colors cursor-pointer"
+                    @click="router.push(`/seller/products/${product.id}/edit`)"
                   >
-                    <Plus class="w-6 h-6 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold">상품 등록</div>
-                      <div class="text-sky-100 text-xs mt-0.5">새 상품을 등록해보세요</div>
+                    <!-- 썸네일 -->
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-teal-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      <img v-if="getThumbnailUrl(product)" :src="getThumbnailUrl(product)!" :alt="product.name" class="w-full h-full object-cover" loading="lazy" />
+                      <Package v-else class="w-6 h-6 text-sky-300" />
                     </div>
-                  </button>
-                  <button
-                    @click="activeTab = 'orders'"
-                    class="flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-slate-700 rounded-2xl p-5 font-semibold transition-colors text-left border border-sky-100 relative"
+                    <!-- 상품명 + 재고 -->
+                    <div class="flex-1 min-w-0">
+                      <p class="font-semibold text-slate-800 text-sm line-clamp-1">{{ product.name }}</p>
+                      <div class="flex items-center gap-2 mt-0.5">
+                        <p
+                          class="text-xs"
+                          :class="product.stock <= 5 && product.status === 'ACTIVE' ? 'text-orange-500 font-semibold' : 'text-slate-400'"
+                        >
+                          재고 {{ product.stock }}개
+                          <span v-if="product.stock <= 5 && product.status === 'ACTIVE'" class="ml-0.5">⚠️</span>
+                        </p>
+                      </div>
+                    </div>
+                    <!-- 가격 + 상태 -->
+                    <div class="flex items-center gap-3 flex-shrink-0">
+                      <p class="font-bold text-sky-600 text-sm">₩{{ product.price.toLocaleString() }}</p>
+                      <span class="text-xs font-semibold px-2.5 py-1 rounded-full" :class="statusBadge(product.status)">
+                        {{ statusText(product.status) }}
+                      </span>
+                      <Edit class="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-400 transition-colors" />
+                    </div>
+                  </div>
+                  <!-- 전체 보기 -->
+                  <div
+                    v-if="allProducts.length > 5"
+                    @click="setTab('products')"
+                    class="px-5 py-3 text-center text-sm text-sky-500 font-medium cursor-pointer hover:bg-sky-50 transition-colors"
                   >
-                    <ShoppingBag class="w-6 h-6 text-sky-500 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold text-slate-800">주문 관리</div>
-                      <div class="text-slate-400 text-xs mt-0.5">주문 처리 및 배송 관리</div>
-                    </div>
-                    <span
-                      v-if="pendingOrders.length > 0"
-                      class="absolute top-3 right-3 bg-amber-400 text-white text-xs font-bold px-1.5 py-0.5 rounded-full"
-                    >{{ pendingOrders.length }}</span>
-                  </button>
-                  <button
-                    @click="router.push('/seller/auctions/new')"
-                    class="flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-slate-700 rounded-2xl p-5 font-semibold transition-colors text-left border border-sky-100"
-                  >
-                    <Gavel class="w-6 h-6 text-sky-500 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold text-slate-800">경매 등록</div>
-                      <div class="text-slate-400 text-xs mt-0.5">실시간 경매를 시작하세요</div>
-                    </div>
-                  </button>
-                  <button
-                    @click="activeTab = 'products'"
-                  class="flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-slate-700
-                         rounded-2xl p-5 font-semibold transition-colors text-left
-                         border border-sky-100"
-                  >
-                    <Package class="w-6 h-6 text-sky-500 flex-shrink-0" />
-                    <div>
-                      <div class="font-bold text-slate-800">상품 관리</div>
-                      <div class="text-slate-400 text-xs mt-0.5">재고와 상태를 관리하세요</div>
-                    </div>
-                  </button>
+                    전체 {{ allProducts.length }}개 상품 보기
+                  </div>
                 </div>
               </section>
 
@@ -501,17 +554,17 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
           </div>
 
           <!-- ── TAB: 내 상품 관리 ── -->
-          <div v-show="activeTab === 'products'">
+          <div v-if="mountedTabs.has('products')" v-show="activeTab === 'products'">
             <SellerProductList />
           </div>
 
           <!-- ── TAB: 주문 관리 ── -->
-          <div v-show="activeTab === 'orders'">
+          <div v-if="mountedTabs.has('orders')" v-show="activeTab === 'orders'">
             <SellerOrdersTab />
           </div>
 
           <!-- ── TAB: 내 경매 관리 ── -->
-          <div v-show="activeTab === 'auctions'">
+          <div v-if="mountedTabs.has('auctions')" v-show="activeTab === 'auctions'">
             <div class="flex items-center justify-between mb-6">
               <h1 class="text-3xl font-black text-slate-900">내 경매 관리</h1>
               <button
@@ -640,191 +693,8 @@ const goToProfileEdit = () => router.push('/seller/profile/edit')
             </template>
           </div>
 
-          <!-- ── TAB: 정산 관리 ── -->
-          <div v-show="activeTab === 'settlements'">
-            <h1 class="text-3xl font-black text-slate-900 mb-6">정산 관리</h1>
-
-            <div v-if="isLoadingSettlements" class="flex justify-center py-16">
-              <Loader2 class="w-8 h-8 animate-spin text-sky-400" />
-            </div>
-
-            <template v-else>
-              <!-- 정산 계좌 섹션 -->
-              <section class="bg-white rounded-2xl border border-sky-100 p-6 mb-6">
-                <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-lg font-bold text-slate-900">정산 계좌</h2>
-                  <button
-                    @click="openAccountForm"
-                    class="flex items-center gap-1.5 text-sm text-sky-500 hover:text-sky-600 font-semibold transition"
-                  >
-                    <CreditCard class="w-4 h-4" />
-                    {{ settlementAccount ? '계좌 수정' : '계좌 등록' }}
-                  </button>
-                </div>
-
-                <div v-if="settlementAccount" class="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <div class="text-xs text-slate-400 mb-0.5">은행</div>
-                    <div class="font-semibold text-slate-800">{{ settlementAccount.bankName }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-slate-400 mb-0.5">계좌번호</div>
-                    <div class="font-semibold text-slate-800 font-mono">{{ settlementAccount.accountNumber }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-slate-400 mb-0.5">예금주</div>
-                    <div class="font-semibold text-slate-800">{{ settlementAccount.accountHolder }}</div>
-                  </div>
-                </div>
-                <div v-else class="flex items-center gap-3 py-4 text-slate-400">
-                  <CreditCard class="w-5 h-5 flex-shrink-0" />
-                  <span class="text-sm">정산 계좌가 등록되지 않았습니다. 계좌를 등록해야 정산금을 받을 수 있습니다.</span>
-                </div>
-              </section>
-
-              <!-- 월간 보고서 섹션 -->
-              <section class="bg-white rounded-2xl border border-sky-100 p-6 mb-6">
-                <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-lg font-bold text-slate-900">월간 정산 보고서</h2>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model.number="reportYear"
-                      type="number"
-                      min="2020"
-                      :max="new Date().getFullYear()"
-                      class="w-20 border border-sky-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                    />
-                    <span class="text-slate-400 text-sm">년</span>
-                    <select
-                      v-model.number="reportMonth"
-                      class="border border-sky-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
-                    >
-                      <option v-for="m in 12" :key="m" :value="m">{{ m }}월</option>
-                    </select>
-                    <button
-                      @click="loadMonthlyReport"
-                      class="flex items-center gap-1.5 px-4 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold rounded-lg transition"
-                    >
-                      <Calendar class="w-4 h-4" />
-                      조회
-                    </button>
-                  </div>
-                </div>
-
-                <div v-if="monthlyReport" class="grid grid-cols-3 gap-4">
-                  <div class="bg-sky-50 rounded-xl p-4 text-center border border-sky-100">
-                    <div class="text-xl font-black text-sky-600">₩{{ monthlyReport.totalAmount.toLocaleString() }}</div>
-                    <div class="text-xs text-slate-400 mt-0.5">총 판매액</div>
-                  </div>
-                  <div class="bg-red-50 rounded-xl p-4 text-center border border-red-100">
-                    <div class="text-xl font-black text-red-500">₩{{ monthlyReport.totalCommission.toLocaleString() }}</div>
-                    <div class="text-xs text-slate-400 mt-0.5">수수료</div>
-                  </div>
-                  <div class="bg-emerald-50 rounded-xl p-4 text-center border border-emerald-100">
-                    <div class="text-xl font-black text-emerald-600">₩{{ monthlyReport.totalNetAmount.toLocaleString() }}</div>
-                    <div class="text-xs text-slate-400 mt-0.5">실지급액 ({{ monthlyReport.settlementCount }}건)</div>
-                  </div>
-                </div>
-                <div v-else class="text-center py-8 text-slate-400 text-sm">
-                  연도와 월을 선택 후 조회 버튼을 눌러주세요
-                </div>
-              </section>
-
-              <!-- 정산 목록 -->
-              <section>
-                <h2 class="text-lg font-bold text-slate-900 mb-4">정산 내역</h2>
-
-                <div v-if="settlements.length === 0" class="text-center py-16 bg-white rounded-2xl border border-sky-100">
-                  <Banknote class="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                  <p class="text-slate-400 text-sm">정산 내역이 없습니다</p>
-                </div>
-
-                <div v-else class="space-y-3">
-                  <div
-                    v-for="settlement in settlements"
-                    :key="settlement.id"
-                    class="bg-white rounded-2xl border border-sky-100 p-5"
-                  >
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-4">
-                        <div>
-                          <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs px-2 py-0.5 rounded-full font-semibold" :class="SETTLEMENT_STATUS_CLASS[settlement.status] ?? 'bg-slate-100 text-slate-500'">
-                              {{ SETTLEMENT_STATUS_LABEL[settlement.status] ?? settlement.status }}
-                            </span>
-                            <span class="text-xs text-slate-400">주문 #{{ settlement.orderId }}</span>
-                          </div>
-                          <div class="text-sm text-slate-500">
-                            판매액 <span class="font-semibold text-slate-800">₩{{ settlement.amount.toLocaleString() }}</span>
-                            &nbsp;·&nbsp; 수수료 <span class="text-red-500">-₩{{ settlement.commissionAmount.toLocaleString() }}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="text-right flex-shrink-0">
-                        <div class="font-black text-emerald-600 text-lg">₩{{ settlement.netAmount.toLocaleString() }}</div>
-                        <div class="flex items-center gap-2 mt-2 justify-end">
-                          <span class="text-xs text-slate-400">
-                            {{ settlement.settledAt ? new Date(settlement.settledAt).toLocaleDateString('ko-KR') : new Date(settlement.createdAt).toLocaleDateString('ko-KR') }}
-                          </span>
-                          <button
-                            @click="downloadPdf(settlement.id)"
-                            class="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-sky-200 text-sky-500 hover:bg-sky-50 transition"
-                          >
-                            <Download class="w-3 h-3" />
-                            PDF
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </template>
-          </div>
-
         </div>
       </div>
     </main>
-
-    <!-- 정산 계좌 폼 모달 -->
-    <Transition name="fade">
-      <div v-if="showAccountForm" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-        <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
-          <h2 class="font-black text-slate-900 text-lg mb-5">
-            {{ settlementAccount ? '정산 계좌 수정' : '정산 계좌 등록' }}
-          </h2>
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-1.5">은행명</label>
-              <input v-model="accountForm.bankName" type="text" placeholder="예: 국민은행" class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-1.5">계좌번호</label>
-              <input v-model="accountForm.accountNumber" type="text" placeholder="- 없이 입력" class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono" />
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-1.5">예금주</label>
-              <input v-model="accountForm.accountHolder" type="text" placeholder="예금주 이름" class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
-            </div>
-          </div>
-          <div class="flex gap-3 mt-6">
-            <button @click="showAccountForm = false" :disabled="isSavingAccount" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
-            <button
-              @click="saveAccount"
-              :disabled="isSavingAccount || !accountForm.bankName || !accountForm.accountNumber || !accountForm.accountHolder"
-              class="flex-1 px-4 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white rounded-full text-sm font-bold transition flex items-center justify-center gap-2"
-            >
-              <Loader2 v-if="isSavingAccount" class="w-4 h-4 animate-spin" />
-              {{ isSavingAccount ? '저장 중...' : '저장' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
   </div>
 </template>
-
-<style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-</style>

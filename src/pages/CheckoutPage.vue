@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
-import { orderApi, paymentApi, productApi, getThumbnailUrl } from '@/api'
-import type { ProductDetail } from '@/api'
+import { useAuthStore } from '@/stores/auth'
+import { orderApi } from '@/api'
 import { memberApi, type DeliveryAddressResponse } from '@/api/member.api'
 import {
-  ArrowLeft,
   MapPin,
   Lock,
   Thermometer,
@@ -18,19 +17,9 @@ import {
   Plus,
 } from 'lucide-vue-next'
 
-declare const PortOne: {
-  requestPayment: (params: object) => Promise<{ code?: string; message?: string; paymentId?: string }>
-}
-
-const STORE_ID = 'store-e103fa1f-c65c-4776-ab72-0cda7b8d9827'
-const CHANNEL_KEYS = {
-  kakao: 'channel-key-0edbe950-6ad5-4a1b-963a-b6f759fa1cb1',
-  card:  'channel-key-f371ee6c-527d-47a4-8005-68e81a10dabe',
-}
-
 const router = useRouter()
-const route = useRoute()
 const cartStore = useCartStore()
+const authStore = useAuthStore()
 const { checkedItems, subtotal, totalShippingFee, totalPrice } = storeToRefs(cartStore)
 
 // ── 배송지 ─────────────────────────────────────────────
@@ -86,49 +75,79 @@ const form = reactive({
 })
 
 // Payment method
-const paymentMethod = ref<'kakao' | 'card'>('kakao')
+const paymentMethod = ref<'kakao' | 'naver' | 'card'>('kakao')
 
-// 바로 구매 모드 (productId 쿼리 파라미터)
-const buyNowProduct = ref<ProductDetail | null>(null)
-const buyNowQuantity = ref(1)
+// Card input (UI only)
+const cardNumber = ref('')
+const cardExpiry = ref('')
+const cardBirth = ref('')
 
-// Order items
+// Order items (from cart store or mock data)
 const orderItems = computed(() => {
-  if (buyNowProduct.value) {
-    const p = buyNowProduct.value
-    return [{
-      productId: p.id,
-      name: p.name,
-      sellerNickName: p.sellerNickName,
-      price: p.price,
-      shippingFee: p.shippingFee,
-      quantity: buyNowQuantity.value,
-      thumbnailUrl: getThumbnailUrl(p),
-    }]
+  if (checkedItems.value.length > 0) {
+    return checkedItems.value.map(item => ({
+      productId: item.productId,
+      name: item.name,
+      sellerNickName: item.sellerNickName,
+      price: item.price,
+      shippingFee: item.shippingFee,
+      quantity: item.quantity,
+      thumbnailUrl: item.thumbnailUrl
+    }))
   }
-  return checkedItems.value.map(item => ({
-    productId: item.productId,
-    name: item.name,
-    sellerNickName: item.sellerNickName,
-    price: item.price,
-    shippingFee: item.shippingFee,
-    quantity: item.quantity,
-    thumbnailUrl: item.thumbnailUrl,
-  }))
+  // Mock data fallback
+  return [
+    {
+      productId: 1,
+      name: '레드 크리스탈 새우 10마리',
+      sellerNickName: '강남아쿠아리움',
+      price: 45000,
+      shippingFee: 3000,
+      quantity: 1,
+      thumbnailUrl: null
+    },
+    {
+      productId: 2,
+      name: 'ADA 아마조니아 소일 9L',
+      sellerNickName: '수초팜',
+      price: 35000,
+      shippingFee: 3000,
+      quantity: 2,
+      thumbnailUrl: null
+    }
+  ]
 })
 
 // Computed totals
 const orderSubtotal = computed(() => {
-  if (buyNowProduct.value) {
-    return buyNowProduct.value.price * buyNowQuantity.value
+  if (checkedItems.value.length > 0) {
+    return subtotal.value
   }
-  return subtotal.value
+  return orderItems.value.reduce((s, i) => s + i.price * i.quantity, 0)
 })
+
 const orderShippingFee = computed(() => {
-  if (buyNowProduct.value) return buyNowProduct.value.shippingFee
-  return totalShippingFee.value
+  if (checkedItems.value.length > 0) {
+    return totalShippingFee.value
+  }
+  // Calculate unique seller shipping fees
+  const sellers = new Set<string>()
+  let fee = 0
+  for (const item of orderItems.value) {
+    if (!sellers.has(item.sellerNickName)) {
+      sellers.add(item.sellerNickName)
+      fee += item.shippingFee
+    }
+  }
+  return fee
 })
-const orderTotalPrice = computed(() => orderSubtotal.value + orderShippingFee.value)
+
+const orderTotalPrice = computed(() => {
+  if (checkedItems.value.length > 0) {
+    return totalPrice.value
+  }
+  return orderSubtotal.value + orderShippingFee.value
+})
 
 const isFormValid = computed(() =>
     form.recipient.trim().length > 0 &&
@@ -143,155 +162,67 @@ const handleAddressSearch = () => {
   form.address = '서울시 강남구 테헤란로 123'
 }
 
+const formatCardNumber = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 16)
+  return digits.replace(/(\d{4})(?=\d)/g, '$1-')
+}
+
+const handleCardNumberInput = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  cardNumber.value = formatCardNumber(target.value)
+}
+
+const formatExpiry = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 4)
+  if (digits.length > 2) {
+    return digits.slice(0, 2) + '/' + digits.slice(2)
+  }
+  return digits
+}
+
+const handleExpiryInput = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  cardExpiry.value = formatExpiry(target.value)
+}
+
 const handleOrder = async () => {
   if (!isFormValid.value || isSubmitting.value) return
-
-  if (orderItems.value.length === 0) {
-    alert('주문할 상품이 없습니다.')
-    return
-  }
-
   isSubmitting.value = true
   try {
-    // 1. 주문 생성
-    const order = await orderApi.createOrder({
+    await orderApi.createOrder({
       items: orderItems.value.map(i => ({ productId: i.productId, quantity: i.quantity })),
       recipientName: form.recipient,
       phoneNumber: form.phone,
       zipCode: form.zipCode,
       address: form.address,
-      detailAddress: form.addressDetail || '',
+      detailAddress: form.addressDetail || undefined,
     })
-
-    const orderId = order.orderId
-    const totalAmount = order.totalAmount + order.shippingFee
-    const paymentId = `order_${orderId}_${Date.now()}`
-    const channelKey = CHANNEL_KEYS[paymentMethod.value]
-
-    // 리다이렉트 방식 복귀 시 사용
-    sessionStorage.setItem('pendingPaymentOrderId', String(orderId))
-
-    // 2. PortOne V2 결제 요청
-    const response = await PortOne.requestPayment({
-      storeId: STORE_ID,
-      channelKey,
-      paymentId,
-      orderName: '아쿠아허브 주문',
-      totalAmount,
-      currency: 'CURRENCY_KRW',
-      payMethod: paymentMethod.value === 'kakao' ? 'EASY_PAY' : 'CARD',
-      ...(paymentMethod.value === 'kakao'
-        ? { easyPay: { easyPayProvider: 'EASY_PAY_PROVIDER_KAKAOPAY' } }
-        : {}),
-      customer: {
-        fullName: form.recipient,
-        phoneNumber: form.phone,
-        address: {
-          addressLine1: form.address,
-          addressLine2: form.addressDetail || '',
-          country: 'KR',
-        },
-      },
-      redirectUrl: `${window.location.origin}/checkout`,
-    })
-
-    // 팝업 방식(카카오페이)은 여기서 결과 수신
-    if (response.code) {
-      alert(`결제 실패: ${response.message}`)
-      return
-    }
-
-    // 3. 백엔드 결제 검증
-    await paymentApi.verify({ paymentId: response.paymentId!, orderId })
-
-    if (!buyNowProduct.value) {
-      await cartStore.clearChecked()
-    }
-    sessionStorage.removeItem('pendingPaymentOrderId')
-    router.push('/orders/complete')
-  } catch (e: any) {
-    const msg = e?.response?.data?.message ?? e?.message
-    const status = e?.response?.status
-    console.error('[주문 실패]', e)
-    alert(msg ?? `주문에 실패했습니다. (${status ?? '네트워크 오류'})`)
-  } finally {
-    isSubmitting.value = false
-  }
-}
-
-// 리다이렉트 방식 결제(토스 등) 복귀 처리
-onMounted(async () => {
-  const paymentId = route.query.paymentId as string | undefined
-  const code = route.query.code as string | undefined
-  const productIdParam = route.query.productId as string | undefined
-  const quantityParam = route.query.quantity as string | undefined
-
-  // 바로 구매 모드
-  if (productIdParam) {
-    try {
-      buyNowProduct.value = await productApi.getDetail(Number(productIdParam))
-      buyNowQuantity.value = Number(quantityParam) || 1
-    } catch {
-      router.replace('/cart')
-    }
-    return
-  }
-
-  // 장바구니 결제 모드: 데이터 로드
-  if (cartStore.cartItems.length === 0) {
-    await cartStore.fetchCart()
-  }
-
-  // 결제 복귀가 아닌 일반 접근 시, 체크된 상품 없으면 장바구니로
-  if (!paymentId && !code && checkedItems.value.length === 0) {
-    router.replace('/cart')
-    return
-  }
-
-  if (!paymentId && !code) return
-
-  const orderIdStr = sessionStorage.getItem('pendingPaymentOrderId')
-  if (!orderIdStr) return
-  const orderId = Number(orderIdStr)
-
-  if (code) {
-    const message = route.query.message as string
-    alert(`결제 실패: ${message}`)
-    return
-  }
-
-  isSubmitting.value = true
-  try {
-    await paymentApi.verify({ paymentId: paymentId!, orderId })
     await cartStore.clearChecked()
-    sessionStorage.removeItem('pendingPaymentOrderId')
     router.push('/orders/complete')
   } catch (e: any) {
-    alert(e?.response?.data?.message ?? '결제 검증에 실패했습니다.')
+    if (e?.response?.status === 403) {
+      // 내 상품이 포함된 경우 → 장바구니에서 제거 후 안내
+      const myNick = authStore.user?.nickName
+      if (myNick) {
+        const ownItems = checkedItems.value.filter(i => i.sellerNickName === myNick)
+        await Promise.all(ownItems.map(i => cartStore.removeItem(i.productId)))
+      }
+      alert('내가 등록한 상품은 구매할 수 없습니다. 해당 상품이 장바구니에서 제거되었습니다.')
+      router.push('/cart')
+    } else {
+      alert(e?.response?.data?.message ?? '주문에 실패했습니다. 다시 시도해주세요.')
+    }
   } finally {
     isSubmitting.value = false
   }
-})
-
-const goBack = () => {
-  router.back()
 }
+
 onMounted(loadAddresses)
 </script>
 
 <template>
   <main class="min-h-screen bg-sky-50">
     <div class="max-w-5xl mx-auto px-6 py-12 mt-16 pb-32 lg:pb-12">
-      <!-- Back Button -->
-      <button
-          type="button"
-          @click="goBack"
-          class="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors mb-6"
-      >
-        <ArrowLeft class="w-5 h-5" />
-        <span class="font-medium">장바구니</span>
-      </button>
-
       <!-- Page Title -->
       <h1 class="text-3xl font-black text-slate-900 mb-8">결제하기</h1>
 
@@ -379,20 +310,12 @@ onMounted(loadAddresses)
                 placeholder="수령인 이름"
                 class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
               />
-              </div>
-
-              <!-- 연락처 -->
-              <div>
               <input
                 v-model="form.phone"
                 type="tel"
                 placeholder="010-1234-5678"
                 class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
               />
-              </div>
-
-              <!-- 우편번호 -->
-              <div>
               <input
                 v-model="form.zipCode"
                 type="text"
@@ -400,9 +323,6 @@ onMounted(loadAddresses)
                 maxlength="6"
                 class="w-36 px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
-              </div>
-
-              <!-- 배송지 주소 -->
               <div class="flex gap-3">
                 <input
                   v-model="form.address"
@@ -421,9 +341,6 @@ onMounted(loadAddresses)
                   주소 검색
                 </button>
               </div>
-
-              <!-- 상세 주소 -->
-              <div>
               <input
                 v-model="form.addressDetail"
                 type="text"
@@ -444,10 +361,6 @@ onMounted(loadAddresses)
                 <option value="call">배송 전 연락 부탁드립니다</option>
                 <option value="custom">직접 입력</option>
               </select>
-              </div>
-
-              <!-- 직접 입력 -->
-              <div v-if="form.memo === 'custom'">
               <input
                 v-if="form.memo === 'custom'"
                 v-model="form.memoCustom"
@@ -507,7 +420,7 @@ onMounted(loadAddresses)
             <h2 class="text-lg font-bold text-slate-900 mb-4">결제 수단</h2>
 
             <!-- Payment Method Cards -->
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-3">
               <!-- 카카오페이 -->
               <button
                   type="button"
@@ -527,7 +440,26 @@ onMounted(loadAddresses)
                 </span>
               </button>
 
-              <!-- 토스페이먼츠 (신용/체크카드) -->
+              <!-- 네이버페이 -->
+              <button
+                  type="button"
+                  @click="paymentMethod = 'naver'"
+                  class="rounded-2xl border-2 p-4 text-center cursor-pointer transition-all"
+                  :class="[
+                  paymentMethod === 'naver'
+                    ? 'border-[#03C75A] bg-[#03C75A]/10'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <span
+                    class="font-bold text-sm"
+                    :class="paymentMethod === 'naver' ? 'text-[#03C75A]' : 'text-slate-600'"
+                >
+                  네이버페이
+                </span>
+              </button>
+
+              <!-- 신용/체크카드 -->
               <button
                   type="button"
                   @click="paymentMethod = 'card'"
@@ -547,10 +479,46 @@ onMounted(loadAddresses)
               </button>
             </div>
 
-            <!-- 카드 안내 (입력은 PortOne 팝업에서 처리) -->
-            <div v-if="paymentMethod === 'card'" class="mt-4 flex items-center gap-2 text-sm text-slate-400">
-              <CreditCard class="w-4 h-4" />
-              <span>결제 버튼을 누르면 토스페이먼츠 창이 열립니다.</span>
+            <!-- Card Input Fields -->
+            <div v-if="paymentMethod === 'card'" class="mt-4 space-y-4">
+              <div>
+                <label class="text-sm text-slate-500 mb-2 block">카드 번호</label>
+                <div class="relative">
+                  <input
+                      :value="cardNumber"
+                      @input="handleCardNumberInput"
+                      type="text"
+                      placeholder="0000-0000-0000-0000"
+                      maxlength="19"
+                      class="w-full px-4 py-3 pl-12 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+                  />
+                  <CreditCard class="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-sm text-slate-500 mb-2 block">유효기간</label>
+                  <input
+                      :value="cardExpiry"
+                      @input="handleExpiryInput"
+                      type="text"
+                      placeholder="MM/YY"
+                      maxlength="5"
+                      class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label class="text-sm text-slate-500 mb-2 block">생년월일</label>
+                  <input
+                      v-model="cardBirth"
+                      type="text"
+                      placeholder="YYMMDD"
+                      maxlength="6"
+                      class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
+                  />
+                </div>
+              </div>
             </div>
           </section>
         </div>

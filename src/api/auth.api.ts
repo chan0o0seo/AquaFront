@@ -45,6 +45,7 @@ export interface AuthMember {
   profileImageUrl?: string
   marketingAgreed: boolean
   role: 'BUYER' | 'SELLER' | 'BREEDER' | 'ADMIN'
+  oauthProvider?: 'KAKAO' | 'NAVER' | null
 }
 
 export const authApi = {

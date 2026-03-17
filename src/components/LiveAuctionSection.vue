@@ -46,7 +46,9 @@ onMounted(async () => {
   } finally {
     isLoading.value = false
   }
-  clockInterval = setInterval(() => { now.value = Date.now() }, 1000)
+  // ACTIVE 경매가 있을 때만 1초 인터벌, 없으면(예정만) 30초로 여유롭게 실행
+  const hasActive = auctions.value.some(a => a.status === 'ACTIVE')
+  clockInterval = setInterval(() => { now.value = Date.now() }, hasActive ? 1000 : 30_000)
 })
 
 onUnmounted(() => {

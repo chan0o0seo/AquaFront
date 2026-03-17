@@ -45,6 +45,10 @@ export const memberApi = {
   updateProfile: (body: ProfileUpdateRequest) =>
     api.patch('/members/me', body),
 
+  // PATCH /api/members/me/profile-image — 프로필 사진 URL 업데이트
+  updateProfileImage: (profileImageUrl: string) =>
+    api.patch('/members/me/profile-image', { profileImageUrl }),
+
   // POST /api/members/me/password/verify-email — 비밀번호 변경용 인증 코드 발송
   sendPasswordVerifyEmail: () =>
     api.post('/members/me/password/verify-email'),

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Fish, Eye, EyeOff, AlertCircle, X, CheckCircle2, Loader2, Check } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
 import { checkPasswordRules, isPasswordValid } from '@/utils/password'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 // ── 로그인 ────────────────────────────────────────────────────
@@ -26,7 +27,8 @@ const handleLogin = async () => {
   hasError.value = false
   try {
     await authStore.login(email.value, password.value)
-    router.push('/')
+    const redirect = route.query.redirect as string | undefined
+    router.push(redirect && redirect.startsWith('/') ? redirect : '/')
   } catch (err: any) {
     hasError.value = true
     errorMessage.value = err?.response?.data?.message ?? '이메일 또는 비밀번호가 올바르지 않습니다.'
@@ -176,16 +178,18 @@ async function submitResetPassword() {
 
         <!-- Social Login -->
         <div class="flex flex-col gap-3">
-          <button class="w-full bg-[#FEE500] text-[#3C1E1E] rounded-full py-3 flex items-center justify-center gap-2 font-semibold hover:brightness-95 transition-all duration-150">
+          <a href="/oauth2/authorization/kakao"
+            class="w-full bg-[#FEE500] text-[#3C1E1E] rounded-full py-3 flex items-center justify-center gap-2 font-semibold hover:brightness-95 transition-all duration-150">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 3C6.5 3 2 6.58 2 11c0 2.84 1.88 5.32 4.66 6.72l-.88 3.24c-.08.29.24.55.51.41l3.87-2.57c.6.09 1.2.2 1.84.2 5.5 0 10-3.58 10-8s-4.5-8-10-8z"/>
             </svg>
             카카오로 계속하기
-          </button>
-          <button class="w-full bg-[#03C75A] text-white rounded-full py-3 flex items-center justify-center gap-2 font-semibold hover:brightness-95 transition-all duration-150">
+          </a>
+          <a href="/oauth2/authorization/naver"
+            class="w-full bg-[#03C75A] text-white rounded-full py-3 flex items-center justify-center gap-2 font-semibold hover:brightness-95 transition-all duration-150">
             <span class="text-lg font-black">N</span>
             네이버로 계속하기
-          </button>
+          </a>
         </div>
 
         <!-- Divider -->

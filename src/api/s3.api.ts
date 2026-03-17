@@ -10,10 +10,10 @@ export interface PresignedUrlResponse {
 export const s3Api = {
   // 1단계: presigned URL 발급
   // POST /api/s3/presigned-url
-  getPresignedUrl: (fileName: string, contentType: string) =>
+  getPresignedUrl: (fileName: string, contentType: string, directory: string) =>
     api.post<{ success: boolean; data: PresignedUrlResponse; message: string }>(
       '/s3/presigned-url',
-      { fileName, contentType }
+      { fileName, contentType, directory }
     ).then(unwrap),
 
   // 2단계: presigned URL로 S3에 직접 PUT 업로드 (api 인스턴스 아닌 순수 axios 사용)
@@ -24,13 +24,13 @@ export const s3Api = {
 }
 
 // 파일 1개를 업로드하고 최종 URL을 반환하는 헬퍼
-export async function uploadFile(file: File): Promise<string> {
-  const { presignedUrl, fileUrl } = await s3Api.getPresignedUrl(file.name, file.type)
+export async function uploadFile(file: File, directory = 'products'): Promise<string> {
+  const { presignedUrl, fileUrl } = await s3Api.getPresignedUrl(file.name, file.type, directory)
   await s3Api.uploadToS3(presignedUrl, file)
   return fileUrl
 }
 
 // 파일 여러 개를 병렬 업로드하고 URL 목록 반환
-export async function uploadFiles(files: File[]): Promise<string[]> {
-  return Promise.all(files.map(uploadFile))
+export async function uploadFiles(files: File[], directory = 'products'): Promise<string[]> {
+  return Promise.all(files.map(f => uploadFile(f, directory)))
 }

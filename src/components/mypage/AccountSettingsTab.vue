@@ -12,6 +12,9 @@ const authStore = useAuthStore()
 
 const props = defineProps<{ user: AuthMember }>()
 
+// 소셜 회원 여부
+const isSocialUser = computed(() => !!props.user.oauthProvider)
+
 // ── 기본 정보 폼 (로컬 복사본) ──────────────────────
 const formName     = ref(props.user.name)
 const formNickName = ref(props.user.nickName)
@@ -208,8 +211,8 @@ async function handleDelete() {
       </div>
     </div>
 
-    <!-- Section 2: 비밀번호 변경 -->
-    <div class="bg-white rounded-2xl border border-sky-100 p-6 mb-6">
+    <!-- Section 2: 비밀번호 변경 (소셜 회원 제외) -->
+    <div v-if="!isSocialUser" class="bg-white rounded-2xl border border-sky-100 p-6 mb-6">
       <h2 class="text-lg font-bold text-slate-900 mb-5">비밀번호 변경</h2>
 
       <div class="space-y-4">
@@ -362,7 +365,14 @@ async function handleDelete() {
             </p>
           </div>
 
-          <div class="mb-5">
+          <!-- 소셜 회원: 비밀번호 없이 탈퇴 -->
+          <div v-if="isSocialUser" class="mb-5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-700">
+            {{ user.oauthProvider === 'KAKAO' ? '카카오' : '네이버' }} 소셜 계정으로 가입된 회원입니다.<br/>
+            탈퇴 시 소셜 연동이 해제되며 모든 데이터가 삭제됩니다.
+          </div>
+
+          <!-- 일반 회원: 비밀번호 확인 -->
+          <div v-else class="mb-5">
             <label class="block text-sm font-medium text-slate-700 mb-1.5">비밀번호 확인</label>
             <div class="relative">
               <input
@@ -395,7 +405,7 @@ async function handleDelete() {
             </button>
             <button
               @click="handleDelete"
-              :disabled="!deletePassword || isDeleting"
+              :disabled="(!isSocialUser && !deletePassword) || isDeleting"
               class="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-full py-3 text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
             >
               <Loader2 v-if="isDeleting" class="w-4 h-4 animate-spin" />
