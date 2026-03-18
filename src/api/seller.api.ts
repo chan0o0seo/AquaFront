@@ -33,6 +33,7 @@ export interface SellerProfileResponse {
   businessPhoneNumber: string
   storeDescription?: string
   logoImageUrl?: string
+  bannerImageUrl?: string
   followerCount: number
   createdAt: string
   updatedAt: string
@@ -44,6 +45,7 @@ export interface SellerProfileUpdateRequest {
   businessPhoneNumber: string
   storeDescription?: string
   logoImageUrl?: string
+  bannerImageUrl?: string
 }
 
 export interface CreateProductRequest {
@@ -163,12 +165,6 @@ export const sellerApi = {
   toggleFollow: (sellerId: string) =>
     api.post<{ success: boolean; data: boolean; message: string }>(
       `/sellers/${sellerId}/follow`
-    ).then(unwrap),
-
-  // GET /api/sellers/:sellerId/followers/count
-  getFollowerCount: (sellerId: string) =>
-    api.get<{ success: boolean; data: number; message: string }>(
-      `/sellers/${sellerId}/followers/count`
     ).then(unwrap),
 
   // GET /api/sellers/:sellerId/follow/status

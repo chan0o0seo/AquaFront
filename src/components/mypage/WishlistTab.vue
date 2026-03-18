@@ -5,10 +5,15 @@ import { Heart, ShoppingCart, Fish, Check } from 'lucide-vue-next'
 import { productApi, getThumbnailUrl, type ProductSummary } from '@/api'
 import { useCartStore } from '@/stores/cart'
 
+interface Props {
+  initialItems?: ProductSummary[]
+}
+const props = withDefaults(defineProps<Props>(), { initialItems: undefined })
+
 const router = useRouter()
 const cartStore = useCartStore()
 
-const wishlistItems = ref<ProductSummary[]>([])
+const wishlistItems = ref<ProductSummary[]>(props.initialItems ?? [])
 const isLoading = ref(false)
 
 const typeLabelMap: Record<string, string> = {
@@ -77,7 +82,9 @@ function formatPrice(price: number) {
   return price.toLocaleString('ko-KR') + '원'
 }
 
-onMounted(loadWishlist)
+onMounted(() => {
+  if (!props.initialItems) loadWishlist()
+})
 </script>
 
 <template>

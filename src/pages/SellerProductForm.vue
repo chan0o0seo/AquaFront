@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeft, X, Loader2, ChevronLeft, ChevronRight, Star, Tag } from 'lucide-vue-next'
 import ProductTypeSelector from '@/components/seller/ProductTypeSelector.vue'
 import ProductImageUploader from '@/components/seller/ProductImageUploader.vue'
@@ -49,10 +49,41 @@ const images = ref<File[]>([])
 
 // 현재 슬롯 잔여 수 (기존 + 새 파일 합산)
 const remainingSlots = computed(() => 3 - existingImageUrls.value.length - images.value.length)
+const totalImages = computed(() => existingImageUrls.value.length + images.value.length)
 
 const removeExistingImage = (index: number) => {
   existingImageUrls.value.splice(index, 1)
 }
+
+// Touched state for inline validation
+const touched = reactive({ name: false, price: false, stock: false })
+const triedSubmit = ref(false)
+
+const errors = computed(() => ({
+  name: (touched.name || triedSubmit.value) && !form.name.trim() ? '상품명을 입력해주세요' : '',
+  price: (touched.price || triedSubmit.value) && form.price === null ? '판매가격을 입력해주세요' : '',
+  stock: (touched.stock || triedSubmit.value) && form.stock === null ? '재고 수량을 입력해주세요' : '',
+  productType: triedSubmit.value && !form.productType ? '상품 유형을 선택해주세요' : '',
+}))
+
+const missingFields = computed(() => {
+  const m: string[] = []
+  if (!form.name.trim()) m.push('상품명')
+  if (form.price === null) m.push('판매가격')
+  if (form.stock === null) m.push('재고 수량')
+  if (!form.productType) m.push('상품 유형')
+  return m
+})
+
+const isDirty = computed(() =>
+  !isEditMode.value && (
+    form.name.trim() !== '' ||
+    form.price !== null ||
+    form.stock !== null ||
+    form.productType !== null ||
+    images.value.length > 0
+  )
+)
 
 // Tags
 const tags = ref<string[]>([])
@@ -160,6 +191,7 @@ const handleFreeShippingChange = () => {
 
 // Submit handler
 const handleSubmit = async () => {
+  triedSubmit.value = true
   if (!isFormValid.value || isSubmitting.value) return
 
   isSubmitting.value = true
@@ -247,6 +279,12 @@ onBeforeUnmount(() => {
 })
 
 const goBack = () => router.push('/mypage/seller')
+
+onBeforeRouteLeave(() => {
+  if (isDirty.value && !isSubmitting.value) {
+    return confirm('작성 중인 내용이 있습니다. 페이지를 떠나시겠습니까?')
+  }
+})
 </script>
 
 <template>
@@ -280,11 +318,15 @@ const goBack = () => router.push('/mypage/seller')
 
         <!-- SECTION 1: Basic Info -->
         <div class="mt-8 bg-white rounded-2xl border border-sky-100 p-6">
-          <h2 class="text-lg font-bold text-slate-800 mb-5">기본 정보</h2>
-          
+          <div class="flex items-center gap-3 mb-5">
+            <span class="w-7 h-7 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">1</span>
+            <h2 class="text-lg font-bold text-slate-800">기본 정보</h2>
+          </div>
+
           <!-- Product Type -->
           <ProductTypeSelector v-model="form.productType" />
-          
+          <p v-if="errors.productType" class="text-red-500 text-xs mt-2">{{ errors.productType }}</p>
+
           <!-- Product Name -->
           <div class="mt-5">
             <label class="block text-sm font-semibold text-slate-700 mb-2">
@@ -296,14 +338,19 @@ const goBack = () => router.push('/mypage/seller')
                 type="text"
                 maxlength="50"
                 placeholder="상품명을 입력해주세요"
-                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800
-                       placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
+                @blur="touched.name = true"
+                class="w-full px-4 py-3 rounded-xl border bg-white text-slate-800
+                       placeholder-slate-400 focus:outline-none focus:ring-2
                        focus:border-transparent transition-all duration-150"
+                :class="errors.name
+                  ? 'border-red-300 focus:ring-red-400'
+                  : 'border-sky-100 focus:ring-sky-400'"
               />
               <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
                 {{ form.name.length }}/50
               </span>
             </div>
+            <p v-if="errors.name" class="text-red-500 text-xs mt-1">{{ errors.name }}</p>
           </div>
           
           <!-- Category -->
@@ -348,10 +395,14 @@ const goBack = () => router.push('/mypage/seller')
 
         <!-- SECTION 2: Images -->
         <div class="mt-4 bg-white rounded-2xl border border-sky-100 p-6">
-          <h2 class="text-lg font-bold text-slate-800 mb-5">
-            이미지 등록
-            <span class="text-sm font-normal text-slate-400 ml-1">(최대 3장)</span>
-          </h2>
+          <div class="flex items-center gap-3 mb-5">
+            <span class="w-7 h-7 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">2</span>
+            <h2 class="text-lg font-bold text-slate-800">이미지 등록</h2>
+            <span class="ml-auto text-sm font-semibold"
+              :class="totalImages === 3 ? 'text-sky-500' : 'text-slate-400'">
+              {{ totalImages }}/3
+            </span>
+          </div>
 
           <!-- 기존 이미지 (수정 모드) -->
           <div v-if="existingImageUrls.length > 0" class="mb-4">
@@ -381,15 +432,18 @@ const goBack = () => router.push('/mypage/seller')
           <ProductImageUploader
             v-if="remainingSlots > 0"
             v-model="images"
-            :max-images="remainingSlots"
+            :max-images="3 - existingImageUrls.length"
           />
           <p v-else class="text-xs text-slate-400 mt-1">이미지 3장이 모두 등록되었습니다.</p>
         </div>
 
         <!-- SECTION 3: Price & Stock -->
         <div class="mt-4 bg-white rounded-2xl border border-sky-100 p-6">
-          <h2 class="text-lg font-bold text-slate-800 mb-5">가격 및 재고</h2>
-          
+          <div class="flex items-center gap-3 mb-5">
+            <span class="w-7 h-7 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">3</span>
+            <h2 class="text-lg font-bold text-slate-800">가격 및 재고</h2>
+          </div>
+
           <div class="grid grid-cols-2 gap-4">
             <!-- Price -->
             <div>
@@ -402,17 +456,22 @@ const goBack = () => router.push('/mypage/seller')
                   type="number"
                   min="0"
                   placeholder="0"
-                  class="w-full px-4 py-3 pr-10 rounded-xl border border-sky-100 bg-white text-slate-800
-                         placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
+                  @blur="touched.price = true"
+                  class="w-full px-4 py-3 pr-10 rounded-xl border bg-white text-slate-800
+                         placeholder-slate-400 focus:outline-none focus:ring-2
                          focus:border-transparent transition-all duration-150"
+                  :class="errors.price
+                    ? 'border-red-300 focus:ring-red-400'
+                    : 'border-sky-100 focus:ring-sky-400'"
                 />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">원</span>
               </div>
-              <p v-if="form.price && form.price > 0" class="text-sky-600 text-sm mt-1 font-medium">
+              <p v-if="errors.price" class="text-red-500 text-xs mt-1">{{ errors.price }}</p>
+              <p v-else-if="form.price && form.price > 0" class="text-sky-600 text-sm mt-1 font-medium">
                 ₩{{ form.price.toLocaleString() }}
               </p>
             </div>
-            
+
             <!-- Stock -->
             <div>
               <label class="block text-sm font-semibold text-slate-700 mb-2">
@@ -423,11 +482,16 @@ const goBack = () => router.push('/mypage/seller')
                 type="number"
                 min="0"
                 placeholder="0"
-                class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800
-                       placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400
+                @blur="touched.stock = true"
+                class="w-full px-4 py-3 rounded-xl border bg-white text-slate-800
+                       placeholder-slate-400 focus:outline-none focus:ring-2
                        focus:border-transparent transition-all duration-150"
+                :class="errors.stock
+                  ? 'border-red-300 focus:ring-red-400'
+                  : 'border-sky-100 focus:ring-sky-400'"
               />
-              <p v-show="showLowStockWarning" class="text-amber-600 text-sm mt-1 font-medium">
+              <p v-if="errors.stock" class="text-red-500 text-xs mt-1">{{ errors.stock }}</p>
+              <p v-else-if="showLowStockWarning" class="text-amber-600 text-sm mt-1 font-medium">
                 재고가 5개 이하입니다
               </p>
             </div>
@@ -472,7 +536,10 @@ const goBack = () => router.push('/mypage/seller')
 
         <!-- SECTION 5: Brand (conditional) -->
         <div v-show="isEquipmentType" class="mt-4 bg-white rounded-2xl border border-sky-100 p-6">
-          <h2 class="text-lg font-bold text-slate-800 mb-5">브랜드 정보</h2>
+          <div class="flex items-center gap-3 mb-5">
+            <span class="w-7 h-7 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">5</span>
+            <h2 class="text-lg font-bold text-slate-800">브랜드 정보</h2>
+          </div>
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-2">브랜드명</label>
             <input
@@ -496,6 +563,7 @@ const goBack = () => router.push('/mypage/seller')
           :is-valid="isFormValid"
           :is-submitting="isSubmitting"
           :is-edit-mode="isEditMode"
+          :missing-fields="missingFields"
           @preview="openPreview"
           @submit="handleSubmit"
         />

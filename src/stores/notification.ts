@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { Client } from '@stomp/stompjs'
 import { notificationApi, type NotificationItem } from '@/api/notification.api'
 
 export const useNotificationStore = defineStore('notification', () => {
   const notifications = ref<NotificationItem[]>([])
   const unreadCount = computed(() => notifications.value.filter(n => !n.read).length)
 
-  let es: EventSource | null = null
-  let shouldReconnect = false
+  let client: Client | null = null
 
   async function load() {
     try {
@@ -17,37 +17,28 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
-  function createConnection() {
-    es = new EventSource('/api/notifications/stream', { withCredentials: true })
-
-    es.addEventListener('notification', (event: MessageEvent) => {
-      const item: NotificationItem = JSON.parse(event.data)
-      // 중복 방지
-      if (!notifications.value.find(n => n.id === item.id)) {
-        notifications.value.unshift(item)
-      }
-    })
-
-    es.onerror = () => {
-      es?.close()
-      es = null
-      if (shouldReconnect) {
-        // 5초 후 재연결 시도 (네트워크 단절 등 일시적 오류 복구)
-        setTimeout(createConnection, 5_000)
-      }
-    }
-  }
-
   function connect() {
-    if (es) return
-    shouldReconnect = true
-    createConnection()
+    if (client?.active) return
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    client = new Client({
+      brokerURL: `${protocol}//${window.location.host}/ws/auction`,
+      onConnect: () => {
+        client!.subscribe('/user/queue/notifications', (msg) => {
+          const item: NotificationItem = JSON.parse(msg.body)
+          if (!notifications.value.find(n => n.id === item.id)) {
+            notifications.value.unshift(item)
+          }
+        })
+      },
+      reconnectDelay: 5000,
+    })
+    client.activate()
   }
 
   function disconnect() {
-    shouldReconnect = false
-    es?.close()
-    es = null
+    client?.deactivate()
+    client = null
     notifications.value = []
   }
 

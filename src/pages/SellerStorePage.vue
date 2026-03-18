@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, Package, Gavel, Heart, MapPin, Star, ChevronDown } from 'lucide-vue-next'
+import { ArrowLeft, Package, Gavel, Heart, MapPin, Star, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-vue-next'
 import { sellerApi, type SellerProfileResponse } from '@/api'
 import { getThumbnailUrl, type ProductSummary } from '@/api'
 import { auctionApi, type AuctionResponse } from '@/api/auction.api'
@@ -23,7 +23,12 @@ const isTogglingFollow = ref(false)
 const isLoading    = ref(true)
 const activeSection = ref<'products' | 'auctions'>('products')
 const activeTypeFilter = ref('')
+const activeCategoryFilter = ref('')
 const sortKey = ref<'default' | 'price_asc' | 'price_desc' | 'rating'>('default')
+const showFilterPanel = ref(false)
+
+// 타입 필터 변경 시 카테고리 필터 초기화
+watch(activeTypeFilter, () => { activeCategoryFilter.value = '' })
 
 // ── 타입 맵 ───────────────────────────────────────────
 const typeLabelMap: Record<string, string> = {
@@ -45,15 +50,77 @@ const typeBadgeClass = (type: string) => {
 // ── 상품 필터/정렬 ────────────────────────────────────
 const availableTypes = computed(() => Array.from(new Set(products.value.map(p => p.productType))))
 
-const sortedFilteredProducts = computed(() => {
-  let list = activeTypeFilter.value
+// 타입별 상품 수
+const typeProductCount = computed(() => {
+  const counts: Record<string, number> = {}
+  products.value.forEach(p => {
+    counts[p.productType] = (counts[p.productType] || 0) + 1
+  })
+  return counts
+})
+
+// 타입 필터 적용 후 상품 (카테고리 추출용)
+const typeFilteredProducts = computed(() =>
+  activeTypeFilter.value
     ? products.value.filter(p => p.productType === activeTypeFilter.value)
     : [...products.value]
-  if (sortKey.value === 'price_asc')  list = list.sort((a, b) => a.price - b.price)
-  if (sortKey.value === 'price_desc') list = list.sort((a, b) => b.price - a.price)
-  if (sortKey.value === 'rating')     list = list.sort((a, b) => b.averageRating - a.averageRating)
+)
+
+// 타입 필터된 상품에서 대분류 추출
+const availableParentCategories = computed(() =>
+  Array.from(new Set(
+    typeFilteredProducts.value
+      .map(p => p.parentCategoryName)
+      .filter((c): c is string => !!c)
+  ))
+)
+
+// 선택한 대분류 내 소분류 추출
+const availableSubCategories = computed(() => {
+  if (!activeCategoryFilter.value) return []
+  return Array.from(new Set(
+    typeFilteredProducts.value
+      .filter(p => p.parentCategoryName === activeCategoryFilter.value)
+      .map(p => p.categoryName)
+      .filter((c): c is string => !!c)
+  ))
+})
+
+const activeSubCategoryFilter = ref('')
+watch(activeCategoryFilter, () => { activeSubCategoryFilter.value = '' })
+
+// 최종 필터/정렬된 상품
+const sortedFilteredProducts = computed(() => {
+  let list = typeFilteredProducts.value
+  if (activeCategoryFilter.value) {
+    list = list.filter(p => p.parentCategoryName === activeCategoryFilter.value)
+  }
+  if (activeSubCategoryFilter.value) {
+    list = list.filter(p => p.categoryName === activeSubCategoryFilter.value)
+  }
+  list = [...list]
+  if (sortKey.value === 'price_asc')  list.sort((a, b) => a.price - b.price)
+  if (sortKey.value === 'price_desc') list.sort((a, b) => b.price - a.price)
+  if (sortKey.value === 'rating')     list.sort((a, b) => b.averageRating - a.averageRating)
   return list
 })
+
+// 현재 필터 경로 (breadcrumb)
+const filterBreadcrumb = computed(() => {
+  const parts: string[] = []
+  if (activeTypeFilter.value) parts.push(`${typeEmojiMap[activeTypeFilter.value]} ${typeLabelMap[activeTypeFilter.value] ?? activeTypeFilter.value}`)
+  if (activeCategoryFilter.value) parts.push(activeCategoryFilter.value)
+  if (activeSubCategoryFilter.value) parts.push(activeSubCategoryFilter.value)
+  return parts
+})
+
+const hasActiveFilter = computed(() => !!(activeTypeFilter.value || activeCategoryFilter.value || activeSubCategoryFilter.value))
+
+function clearAllFilters() {
+  activeTypeFilter.value = ''
+  activeCategoryFilter.value = ''
+  activeSubCategoryFilter.value = ''
+}
 
 // ── 경매 카운트다운 ────────────────────────────────────
 const now = ref(Date.now())
@@ -94,7 +161,6 @@ async function load() {
     profile.value   = profileData
     products.value  = productsData
 
-    // 해당 판매자의 경매만 필터링
     const all = [...activeData, ...scheduledData]
     auctions.value = all.filter(a => a.sellerNickName === profileData.nickName)
 
@@ -112,19 +178,16 @@ async function toggleFollow() {
   if (!isLoggedIn.value) { router.push('/login'); return }
   if (isTogglingFollow.value || !profile.value) return
   isTogglingFollow.value = true
-  // 낙관적 업데이트
   const prev = isFollowing.value
   isFollowing.value = !prev
   profile.value.followerCount += prev ? -1 : 1
   try {
     const result = await sellerApi.toggleFollow(sellerId)
-    // 서버 결과가 낙관적 업데이트와 다르면 롤백
     if (result !== !prev) {
       isFollowing.value = result
       profile.value.followerCount += prev ? 1 : -1
     }
   } catch {
-    // 실패 시 롤백
     isFollowing.value = prev
     profile.value.followerCount += prev ? 1 : -1
   } finally {
@@ -140,8 +203,8 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
 </script>
 
 <template>
-  <div class="min-h-screen bg-white">
-    <main class="max-w-6xl mx-auto px-6 py-12 mt-16">
+  <div class="min-h-screen bg-slate-50">
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 py-12 mt-16">
 
       <button
         @click="router.back()"
@@ -153,7 +216,7 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
 
       <!-- 스켈레톤 로딩 -->
       <template v-if="isLoading">
-        <div class="rounded-2xl border border-sky-100 mb-8 animate-pulse">
+        <div class="rounded-2xl border border-sky-100 bg-white mb-6 animate-pulse">
           <div class="h-32 bg-slate-100 rounded-t-2xl" />
           <div class="px-6 pb-6">
             <div class="flex items-end justify-between -mt-10 mb-4">
@@ -170,7 +233,7 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
           </div>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 animate-pulse">
-          <div v-for="i in 8" :key="i" class="rounded-2xl border border-sky-50 overflow-hidden">
+          <div v-for="i in 8" :key="i" class="rounded-2xl border border-sky-50 bg-white overflow-hidden">
             <div class="aspect-square bg-slate-100" />
             <div class="p-3 space-y-2">
               <div class="h-4 bg-slate-100 rounded w-3/4" />
@@ -190,23 +253,37 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
       <template v-else>
 
         <!-- ── 프로필 헤더 ── -->
-        <div class="rounded-2xl border border-sky-100 mb-8 relative">
+        <div class="bg-white rounded-2xl border border-sky-100 mb-6 relative overflow-hidden">
           <!-- 배너 -->
-          <div class="h-36 bg-gradient-to-r from-sky-400 via-teal-400 to-cyan-500 rounded-t-2xl overflow-hidden relative">
-            <div class="absolute inset-0 opacity-20"
-              style="background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,.1) 10px, rgba(255,255,255,.1) 20px)" />
+          <div class="h-60 relative overflow-hidden">
+            <img
+              v-if="profile.bannerImageUrl"
+              :src="profile.bannerImageUrl"
+              alt="스토어 배너"
+              class="w-full h-full object-cover"
+            />
+            <div
+              v-else
+              class="w-full h-full bg-gradient-to-r from-sky-400 via-teal-400 to-cyan-500"
+            >
+              <div class="absolute inset-0 opacity-20"
+                style="background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,.1) 10px, rgba(255,255,255,.1) 20px)" />
+            </div>
+            <!-- 배너 이미지 위 어두운 그라디언트 (가독성) -->
+            <div v-if="profile.bannerImageUrl"
+              class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/20" />
           </div>
 
-          <!-- 로고: 배너와 콘텐츠 경계에 걸치도록 absolute 배치 -->
-          <div class="absolute top-24 left-6 w-20 h-20 rounded-2xl border-4 border-white shadow-md overflow-hidden z-10">
+          <!-- 로고 -->
+          <div class="absolute top-48 left-6 w-20 h-20 rounded-2xl border-4 border-white shadow-md overflow-hidden z-10">
             <img v-if="profile.logoImageUrl" :src="profile.logoImageUrl" :alt="profile.nickName" class="w-full h-full object-cover" />
             <div v-else class="w-full h-full bg-gradient-to-br from-sky-400 to-teal-500 flex items-center justify-center text-white text-3xl font-black">
               {{ sellerInitial }}
             </div>
           </div>
 
-          <div class="px-6 pb-6 pt-14">
-            <!-- 팔로우 버튼 (우측 정렬) -->
+          <div class="px-6 pb-6 pt-6">
+            <!-- 팔로우 버튼 -->
             <div class="flex justify-end mb-3">
               <button
                 @click="toggleFollow"
@@ -236,7 +313,7 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
               {{ profile.storeDescription }}
             </p>
 
-            <!-- 통계 3개 -->
+            <!-- 통계 -->
             <div class="grid grid-cols-3 gap-3 mt-4">
               <div class="bg-sky-50 rounded-xl p-3 text-center border border-sky-100">
                 <p class="text-xs text-slate-400 mb-1">등록 상품</p>
@@ -255,11 +332,11 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
         </div>
 
         <!-- ── 섹션 탭 ── -->
-        <div class="flex gap-1 p-1 bg-sky-50 rounded-xl border border-sky-100 mb-6 w-fit">
+        <div class="flex gap-1 p-1 bg-white rounded-xl border border-sky-100 mb-5 w-fit">
           <button
             @click="activeSection = 'products'"
             class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all"
-            :class="activeSection === 'products' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'"
+            :class="activeSection === 'products' ? 'bg-sky-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'"
           >
             <Package class="w-4 h-4" />
             상품 {{ products.length }}
@@ -267,7 +344,7 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
           <button
             @click="activeSection = 'auctions'"
             class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all"
-            :class="activeSection === 'auctions' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'"
+            :class="activeSection === 'auctions' ? 'bg-sky-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'"
           >
             <Gavel class="w-4 h-4" />
             경매
@@ -280,28 +357,119 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
 
         <!-- ── 상품 섹션 ── -->
         <template v-if="activeSection === 'products'">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <!-- 카테고리 필터 -->
-            <div v-if="availableTypes.length > 1" class="flex gap-2 flex-wrap">
+
+          <!-- ─ 카테고리 필터 패널 ─ -->
+          <div class="bg-white rounded-2xl border border-sky-100 p-4 mb-4">
+
+            <!-- 1단계: 상품 유형 -->
+            <div class="flex flex-wrap gap-2">
               <button
                 @click="activeTypeFilter = ''"
-                class="px-3 py-1.5 rounded-full text-sm font-medium transition-all"
-                :class="!activeTypeFilter ? 'bg-sky-500 text-white' : 'bg-sky-50 text-slate-600 hover:bg-sky-100 border border-sky-100'"
-              >전체</button>
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all border"
+                :class="!activeTypeFilter
+                  ? 'bg-sky-500 text-white border-sky-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300 hover:text-sky-600'"
+              >
+                전체
+                <span class="text-[11px] font-bold opacity-75">{{ products.length }}</span>
+              </button>
               <button
                 v-for="type in availableTypes"
                 :key="type"
                 @click="activeTypeFilter = activeTypeFilter === type ? '' : type"
-                class="px-3 py-1.5 rounded-full text-sm font-medium transition-all"
-                :class="activeTypeFilter === type ? 'bg-sky-500 text-white' : 'bg-sky-50 text-slate-600 hover:bg-sky-100 border border-sky-100'"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all border"
+                :class="activeTypeFilter === type
+                  ? 'bg-sky-500 text-white border-sky-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300 hover:text-sky-600'"
               >
-                {{ typeEmojiMap[type] }} {{ typeLabelMap[type] ?? type }}
+                <span>{{ typeEmojiMap[type] }}</span>
+                <span>{{ typeLabelMap[type] ?? type }}</span>
+                <span class="text-[11px] font-bold opacity-75">{{ typeProductCount[type] ?? 0 }}</span>
               </button>
             </div>
-            <div v-else />
+
+            <!-- 2단계: 대분류 카테고리 (타입 선택 시 or 카테고리 있을 때) -->
+            <template v-if="availableParentCategories.length > 0">
+              <div class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+                <ChevronRight class="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    @click="activeCategoryFilter = ''"
+                    class="px-3 py-1 rounded-full text-xs font-medium transition-all border"
+                    :class="!activeCategoryFilter
+                      ? 'bg-teal-500 text-white border-teal-500'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-teal-300 hover:text-teal-600'"
+                  >전체</button>
+                  <button
+                    v-for="cat in availableParentCategories"
+                    :key="cat"
+                    @click="activeCategoryFilter = activeCategoryFilter === cat ? '' : cat"
+                    class="px-3 py-1 rounded-full text-xs font-medium transition-all border"
+                    :class="activeCategoryFilter === cat
+                      ? 'bg-teal-500 text-white border-teal-500'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-teal-300 hover:text-teal-600'"
+                  >{{ cat }}</button>
+                </div>
+              </div>
+            </template>
+
+            <!-- 3단계: 소분류 카테고리 -->
+            <template v-if="availableSubCategories.length > 0">
+              <div class="flex items-center gap-2 mt-2 pl-5">
+                <ChevronRight class="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    @click="activeSubCategoryFilter = ''"
+                    class="px-3 py-1 rounded-full text-xs font-medium transition-all border"
+                    :class="!activeSubCategoryFilter
+                      ? 'bg-slate-600 text-white border-slate-600'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:text-slate-600'"
+                  >전체</button>
+                  <button
+                    v-for="sub in availableSubCategories"
+                    :key="sub"
+                    @click="activeSubCategoryFilter = activeSubCategoryFilter === sub ? '' : sub"
+                    class="px-3 py-1 rounded-full text-xs font-medium transition-all border"
+                    :class="activeSubCategoryFilter === sub
+                      ? 'bg-slate-600 text-white border-slate-600'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:text-slate-600'"
+                  >{{ sub }}</button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- 결과 헤더 (breadcrumb + 수 + 정렬) -->
+          <div class="flex items-center justify-between gap-3 mb-4">
+            <!-- 현재 필터 경로 -->
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="text-sm font-semibold text-slate-700 flex-shrink-0">
+                {{ sortedFilteredProducts.length }}개
+              </span>
+              <template v-if="filterBreadcrumb.length > 0">
+                <span class="text-slate-300">·</span>
+                <div class="flex items-center gap-1 text-xs text-slate-400 min-w-0 overflow-hidden">
+                  <span
+                    v-for="(part, i) in filterBreadcrumb"
+                    :key="i"
+                    class="flex items-center gap-1 flex-shrink-0"
+                  >
+                    <ChevronRight v-if="i > 0" class="w-3 h-3 text-slate-300" />
+                    <span class="font-medium text-sky-600">{{ part }}</span>
+                  </span>
+                </div>
+              </template>
+              <button
+                v-if="hasActiveFilter"
+                @click="clearAllFilters"
+                class="flex-shrink-0 text-xs text-slate-400 hover:text-red-400 underline transition-colors ml-1"
+              >
+                초기화
+              </button>
+            </div>
 
             <!-- 정렬 -->
-            <div class="relative">
+            <div class="relative flex-shrink-0">
               <select
                 v-model="sortKey"
                 class="appearance-none pl-3 pr-8 py-1.5 rounded-xl border border-sky-100 text-sm text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer"
@@ -353,6 +521,11 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
               </div>
 
               <div class="p-3">
+                <!-- 카테고리 경로 (있을 때만) -->
+                <p v-if="product.parentCategoryName" class="text-[10px] text-slate-400 mb-1 truncate">
+                  {{ product.parentCategoryName }}{{ product.categoryName ? ` › ${product.categoryName}` : '' }}
+                </p>
+
                 <h3 class="text-sm font-semibold text-slate-800 line-clamp-2 leading-snug mb-2">{{ product.name }}</h3>
 
                 <!-- 태그 -->
@@ -380,10 +553,14 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
             </div>
           </div>
 
-          <div v-else class="text-center py-20">
+          <div v-else class="text-center py-20 bg-white rounded-2xl border border-sky-100">
             <Package class="w-10 h-10 text-slate-200 mx-auto mb-3" />
-            <p class="text-slate-400 text-sm">{{ activeTypeFilter ? '해당 카테고리 상품이 없습니다' : '등록된 상품이 없습니다' }}</p>
-            <button v-if="activeTypeFilter" @click="activeTypeFilter = ''" class="mt-2 text-sm text-sky-500 hover:underline">전체 보기</button>
+            <p class="text-slate-400 text-sm">
+              {{ hasActiveFilter ? '해당 조건의 상품이 없습니다' : '등록된 상품이 없습니다' }}
+            </p>
+            <button v-if="hasActiveFilter" @click="clearAllFilters" class="mt-2 text-sm text-sky-500 hover:underline">
+              전체 보기
+            </button>
           </div>
         </template>
 
@@ -483,7 +660,7 @@ onBeforeUnmount(() => { if (ticker) clearInterval(ticker) })
           </template>
 
           <!-- 빈 상태 -->
-          <div v-if="auctions.length === 0" class="text-center py-20">
+          <div v-if="auctions.length === 0" class="text-center py-20 bg-white rounded-2xl border border-sky-100">
             <Gavel class="w-10 h-10 text-slate-200 mx-auto mb-3" />
             <p class="text-slate-400 text-sm">진행 중이거나 예정된 경매가 없습니다</p>
             <button @click="router.push('/auction')" class="mt-3 text-sm text-sky-500 hover:underline">

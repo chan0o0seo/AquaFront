@@ -45,10 +45,11 @@ const updateField = <K extends keyof BioSpecs>(field: K, value: BioSpecs[K]) => 
 
 <template>
   <div class="bg-sky-50 rounded-2xl border border-sky-100 p-6">
-    <h3 class="text-sm font-semibold text-slate-700 mb-1 flex items-center gap-2">
-      생물 사양 정보
-    </h3>
-    <p class="text-xs text-slate-400 mb-5">(선택사항)</p>
+    <div class="flex items-center gap-3 mb-1">
+      <span class="w-7 h-7 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">4</span>
+      <h3 class="text-base font-bold text-slate-800">생물 사양 정보</h3>
+    </div>
+    <p class="text-xs text-slate-400 mb-5 ml-10">(선택사항)</p>
     
     <div class="space-y-5">
       <!-- Water Type -->

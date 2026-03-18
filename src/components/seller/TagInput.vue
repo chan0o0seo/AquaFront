@@ -59,9 +59,10 @@ const removeTag = (index: number) => {
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-3">
-      <label class="text-sm font-semibold text-slate-700">
-        태그 <span class="text-slate-400 font-normal">(최대 {{ maxTags }}개)</span>
+    <div class="flex items-center gap-3 mb-3">
+      <span class="w-7 h-7 rounded-full bg-sky-500 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">6</span>
+      <label class="text-base font-bold text-slate-800 flex-1">
+        태그 <span class="text-slate-400 text-sm font-normal">(최대 {{ maxTags }}개)</span>
       </label>
       <span class="text-xs text-slate-400">{{ modelValue.length }}/{{ maxTags }}</span>
     </div>

@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, MapPin, Loader2 } from 'lucide-vue-next'
 import { useSellerApplication } from '@/composables/useSellerApplication'
 import LogoUploadCircle from '@/components/seller/LogoUploadCircle.vue'
+import BannerUpload from '@/components/seller/BannerUpload.vue'
 import { sellerApi, uploadFile } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -25,6 +26,10 @@ const form = reactive({
 // Logo
 const logoFile = ref<File | null>(null)
 const existingLogoUrl = ref<string | null>(null)
+// Banner
+const bannerFile = ref<File | null>(null)
+const existingBannerUrl = ref<string | null>(null)
+const bannerRemoved = ref(false)
 const existingRegistrationNumber = ref<string | null>(null)
 
 const isSubmitting = ref(false)
@@ -51,6 +56,7 @@ onMounted(async () => {
     form.businessPhoneNumber = profile.businessPhoneNumber
     form.storeDescription = profile.storeDescription ?? ''
     existingLogoUrl.value = profile.logoImageUrl ?? null
+    existingBannerUrl.value = profile.bannerImageUrl ?? null
     existingRegistrationNumber.value = profile.businessRegistrationNumber
   } catch {
     // ignore
@@ -75,12 +81,20 @@ const handleSubmit = async () => {
       logoImageUrl = existingLogoUrl.value ?? undefined
     }
 
+    let bannerImageUrl: string | undefined
+    if (bannerFile.value) {
+      bannerImageUrl = await uploadFile(bannerFile.value)
+    } else if (isEditMode && !bannerRemoved.value) {
+      bannerImageUrl = existingBannerUrl.value ?? undefined
+    }
+
     await sellerApi.updateProfile({
       businessName: form.businessName,
       businessAddress: form.businessAddress,
       businessPhoneNumber: form.businessPhoneNumber,
       storeDescription: form.storeDescription || undefined,
       logoImageUrl,
+      bannerImageUrl,
     })
 
     await authStore.fetchMe()
@@ -125,8 +139,20 @@ const goBack = () => {
           구매자들에게 보여질 내 스토어 정보를 설정해주세요.
         </p>
 
-        <!-- Logo Upload -->
+        <!-- Banner Upload -->
         <div class="mt-8">
+          <label class="block text-sm font-semibold text-slate-700 mb-2">
+            스토어 배너 <span class="text-slate-400 font-normal">(선택)</span>
+          </label>
+          <BannerUpload
+            v-model="bannerFile"
+            :existing-url="existingBannerUrl"
+            @remove="bannerRemoved = true"
+          />
+        </div>
+
+        <!-- Logo Upload -->
+        <div class="mt-6">
           <LogoUploadCircle v-model="logoFile" :existing-url="existingLogoUrl" />
         </div>
 

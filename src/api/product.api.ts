@@ -27,6 +27,8 @@ export interface ProductSummary {
   status: 'ACTIVE' | 'SOLD_OUT'
   lowStockWarning: boolean
   tags: string[]
+  parentCategoryName?: string | null
+  categoryName?: string | null
 }
 
 export interface ProductDetail extends ProductSummary {
@@ -132,12 +134,6 @@ export const productApi = {
   getMyWishlist: () =>
     api.get<{ success: boolean; data: ProductSummary[]; message: string }>(
       '/members/me/wishlist'
-    ).then(unwrap),
-
-  // GET /api/products/type/{productType} — 타입별 상품 목록
-  searchByType: (productType: ProductType, params?: { page?: number; size?: number; sort?: string }) =>
-    api.get<{ success: boolean; data: ProductSummary[]; message: string }>(
-      `/products/type/${productType}`, { params }
     ).then(unwrap),
 
   // GET /api/products/:id/wishlist/count — 찜 수 조회

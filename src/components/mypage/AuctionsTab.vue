@@ -4,13 +4,18 @@ import { useRouter } from 'vue-router'
 import { Gavel, Trophy, Clock, Loader2, Bell } from 'lucide-vue-next'
 import { auctionApi, type MyBidResponse, type AuctionResponse } from '@/api'
 
+interface Props {
+  initialBids?: MyBidResponse[]
+}
+const props = withDefaults(defineProps<Props>(), { initialBids: undefined })
+
 const router = useRouter()
 
 type Filter = '전체' | '입찰중' | '낙찰' | '패찰'
 const activeFilter = ref<Filter>('전체')
 const filterOptions: Filter[] = ['전체', '입찰중', '낙찰', '패찰']
 
-const myBids = ref<MyBidResponse[]>([])
+const myBids = ref<MyBidResponse[]>(props.initialBids ?? [])
 const myWatches = ref<AuctionResponse[]>([])
 const isLoading = ref(true)
 const now = ref(Date.now())
@@ -18,10 +23,12 @@ const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval>
 onMounted(async () => {
   try {
-    ;[myBids.value, myWatches.value] = await Promise.all([
-      auctionApi.getMyBids(),
+    const [bids, watches] = await Promise.all([
+      props.initialBids ? Promise.resolve(props.initialBids) : auctionApi.getMyBids(),
       auctionApi.getMyWatches(),
     ])
+    myBids.value = bids
+    myWatches.value = watches
   } catch (e) {
     console.error('Failed to load auction data', e)
   } finally {

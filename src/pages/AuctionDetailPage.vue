@@ -109,7 +109,7 @@ const handleBuyNow = async () => {
   isBuyingNow.value = true
   try {
     auction.value = await auctionApi.buyNow(auctionId)
-    bids.value = await auctionApi.getBids(auctionId)
+    // buyNow 후 경매가 종료되므로 입찰 목록 재조회 불필요
   } catch (e: any) {
     alert(e?.response?.data?.message ?? '즉시 구매에 실패했습니다.')
   } finally {

@@ -27,7 +27,11 @@ const isLoading = ref(false)
 const { loading: isSyncing } = storeToRefs(cartStore)
 
 onMounted(() => {
-  cartStore.fetchCart()
+  // 로그인 시 auth store에서 이미 fetchCart()가 호출됨
+  // 장바구니가 비어있을 때만 재요청 (새로고침 등 예외 상황 대응)
+  if (cartStore.cartItems.length === 0) {
+    cartStore.fetchCart()
+  }
 })
 
 const handleClearAll = async () => {
