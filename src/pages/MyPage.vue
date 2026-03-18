@@ -5,8 +5,8 @@ import { Home, Package, Gavel, Heart, Fish, Bell, Store, Settings, Loader2, Chec
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useSellerApplication } from '@/composables/useSellerApplication'
-import { orderApi, productApi, memberApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus, type NotificationType } from '@/api'
-import type { MyBidResponse } from '@/api/auction.api'
+import { orderApi, productApi, memberApi, ORDER_STATUS_LABEL, type OrderResponse, type OrderStatus, type NotificationType, type ProductSummary } from '@/api'
+import { auctionApi, type MyBidResponse } from '@/api/auction.api'
 import WishlistTab from '../components/mypage/WishlistTab.vue'
 import AccountSettingsTab from '../components/mypage/AccountSettingsTab.vue'
 import ProfileEditModal from '../components/mypage/ProfileEditModal.vue'
@@ -41,7 +41,8 @@ const activeTab = ref('summary')
 // Summary data
 const isSummaryLoading = ref(false)
 const allOrders = ref<OrderResponse[]>([])
-const wishlistCount = ref(0)
+const allWishlist = ref<ProductSummary[]>([])
+const wishlistCount = computed(() => allWishlist.value.length)
 const myBids = ref<MyBidResponse[]>([])
 
 // 인사말 (시간대별)
@@ -108,7 +109,7 @@ async function loadSummary() {
       auctionApi.getMyBids(),
     ])
     allOrders.value = orders
-    wishlistCount.value = wishlist.length
+    allWishlist.value = wishlist
     myBids.value = bids
   } catch {
     // 에러 무시 — 빈 상태로 표시
@@ -141,13 +142,15 @@ const menuItems = computed(() => {
 })
 
 // 판매자 탭 진입 시 신청 상태 조회 (BUYER 전용)
-// 알림 탭 진입 시 설정 조회
+// 알림 탭 진입 시 설정 조회 (최초 1회만)
+const notificationsLoaded = ref(false)
 watch(activeTab, (tab) => {
   if (tab === 'seller' && user.value.memberType === 'buyer') {
     fetchApplicationStatus()
   }
-  if (tab === 'notifications') {
+  if (tab === 'notifications' && !notificationsLoaded.value) {
     loadNotificationSettings()
+    notificationsLoaded.value = true
   }
 })
 
@@ -513,17 +516,17 @@ function goToOrderDetail(orderId: number) {
 
           <!-- Orders Tab -->
           <div v-show="activeTab === 'orders'">
-            <OrdersTab />
+            <OrdersTab :initial-orders="allOrders.length ? allOrders : undefined" />
           </div>
 
           <!-- Auctions Tab -->
           <div v-show="activeTab === 'auctions'">
-            <AuctionsTab />
+            <AuctionsTab :initial-bids="myBids.length ? myBids : undefined" />
           </div>
 
           <!-- Wishlist Tab -->
           <div v-show="activeTab === 'wishlist'">
-            <WishlistTab />
+            <WishlistTab :initial-items="allWishlist.length ? allWishlist : undefined" />
           </div>
 
           <!-- Seller Tab -->

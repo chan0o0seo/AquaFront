@@ -18,9 +18,8 @@ async function bootstrap() {
     navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => {})
   }
 
-  // 앱 마운트 전에 auth 초기화 — 보호된 페이지 플래시 방지
-  const { useAuthStore } = await import('@/stores/auth')
-  await useAuthStore().fetchMe()
+  // auth 초기화는 router beforeEach에서 처리 (중복 호출 방지)
+  await router.isReady()
 
   app.mount('#app')
 }

@@ -5,9 +5,10 @@ interface Props {
   isValid: boolean
   isSubmitting: boolean
   isEditMode?: boolean
+  missingFields?: string[]
 }
 
-withDefaults(defineProps<Props>(), { isEditMode: false })
+withDefaults(defineProps<Props>(), { isEditMode: false, missingFields: () => [] })
 
 const emit = defineEmits<{
   'preview': []
@@ -17,6 +18,9 @@ const emit = defineEmits<{
 
 <template>
   <div class="sticky bottom-0 bg-white border-t border-sky-100 px-6 py-4 -mx-6 -mb-6 mt-6">
+    <p v-if="!isValid && missingFields.length > 0" class="text-xs text-slate-400 text-right mb-2">
+      미입력: <span class="text-red-400 font-medium">{{ missingFields.join(', ') }}</span>
+    </p>
     <div class="flex items-center justify-end gap-3">
       <button
         type="button"

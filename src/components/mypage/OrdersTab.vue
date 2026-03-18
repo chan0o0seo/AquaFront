@@ -7,11 +7,16 @@ import { productApi, type Review } from '@/api/product.api'
 import { useAuthStore } from '@/stores/auth'
 import ReviewWriteForm from '@/components/product/ReviewWriteForm.vue'
 
+interface Props {
+  initialOrders?: OrderResponse[]
+}
+const props = withDefaults(defineProps<Props>(), { initialOrders: undefined })
+
 const router = useRouter()
 const authStore = useAuthStore()
 
-const orders = ref<OrderResponse[]>([])
-const isLoading = ref(true)
+const orders = ref<OrderResponse[]>(props.initialOrders ?? [])
+const isLoading = ref(!props.initialOrders)
 const error = ref('')
 
 // ── 리뷰 상태 ──────────────────────────────────────────
@@ -169,6 +174,7 @@ async function handleCancel(orderId: number) {
 }
 
 onMounted(async () => {
+  if (props.initialOrders) return   // 부모에서 이미 데이터를 받았으면 재요청 생략
   try {
     orders.value = await orderApi.getMyOrders()
   } catch {
