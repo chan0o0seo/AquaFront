@@ -13,7 +13,7 @@ export function useSellerMode() {
     }
   })
 
-  // Eligible if the logged-in user has SELLER or BREEDER role
+  // Eligible if the logged-in user has SELLER role
   const isEligible = computed(() => authStore.isSeller)
 
   const setSellerMode = (value: boolean) => {

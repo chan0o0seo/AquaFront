@@ -13,7 +13,7 @@ export interface AdminPage<T> {
 
 // ── 회원 ─────────────────────────────────────────────────────────────────────
 
-export type MemberRole = 'BUYER' | 'SELLER' | 'BREEDER' | 'ADMIN'
+export type MemberRole = 'BUYER' | 'SELLER' | 'ADMIN'
 
 export interface AdminMemberResponse {
   id: string

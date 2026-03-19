@@ -4,15 +4,15 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
-import { orderApi } from '@/api'
+import { orderApi, paymentApi } from '@/api'
 import { memberApi, type DeliveryAddressResponse } from '@/api/member.api'
+import * as PortOne from '@portone/browser-sdk/v2'
 import {
   MapPin,
   Lock,
   Thermometer,
   Fish,
   Loader2,
-  CreditCard,
   CheckCircle2,
   Plus,
 } from 'lucide-vue-next'
@@ -77,10 +77,24 @@ const form = reactive({
 // Payment method
 const paymentMethod = ref<'kakao' | 'naver' | 'card'>('kakao')
 
-// Card input (UI only)
-const cardNumber = ref('')
-const cardExpiry = ref('')
-const cardBirth = ref('')
+// PortOne V2 결제수단 매핑
+// 채널키는 .env.local에서 관리 (VITE_PORTONE_CHANNEL_KEY_*)
+const PAYMENT_CONFIG = {
+  card:  {
+    channelKey: import.meta.env.VITE_PORTONE_CHANNEL_KEY_CARD  as string,
+    payMethod:  'CARD' as const,
+  },
+  kakao: {
+    channelKey:      import.meta.env.VITE_PORTONE_CHANNEL_KEY_KAKAO as string,
+    payMethod:       'EASY_PAY' as const,
+    easyPayProvider: 'KAKAOPAY' as const,
+  },
+  naver: {
+    channelKey:      import.meta.env.VITE_PORTONE_CHANNEL_KEY_NAVER as string,
+    payMethod:       'EASY_PAY' as const,
+    easyPayProvider: 'NAVERPAY' as const,
+  },
+}
 
 // Order items (from cart store or mock data)
 const orderItems = computed(() => {
@@ -162,34 +176,15 @@ const handleAddressSearch = () => {
   form.address = '서울시 강남구 테헤란로 123'
 }
 
-const formatCardNumber = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 16)
-  return digits.replace(/(\d{4})(?=\d)/g, '$1-')
-}
-
-const handleCardNumberInput = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  cardNumber.value = formatCardNumber(target.value)
-}
-
-const formatExpiry = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 4)
-  if (digits.length > 2) {
-    return digits.slice(0, 2) + '/' + digits.slice(2)
-  }
-  return digits
-}
-
-const handleExpiryInput = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  cardExpiry.value = formatExpiry(target.value)
-}
-
 const handleOrder = async () => {
   if (!isFormValid.value || isSubmitting.value) return
   isSubmitting.value = true
+
+  let orderId: number | null = null
+
   try {
-    await orderApi.createOrder({
+    // 1. 주문 생성 — 금액은 백엔드에서 확정 (프론트 조작 불가)
+    const order = await orderApi.createOrder({
       items: orderItems.value.map(i => ({ productId: i.productId, quantity: i.quantity })),
       recipientName: form.recipient,
       phoneNumber: form.phone,
@@ -197,11 +192,48 @@ const handleOrder = async () => {
       address: form.address,
       detailAddress: form.addressDetail || undefined,
     })
+    orderId = order.orderId
+
+    // 2. PortOne 결제창 호출
+    const config = PAYMENT_CONFIG[paymentMethod.value]
+    const paymentId = `payment-${orderId}-${Date.now()}`
+    const orderName =
+      orderItems.value.length === 1
+        ? orderItems.value[0].name
+        : `${orderItems.value[0].name} 외 ${orderItems.value.length - 1}건`
+
+    const response = await PortOne.requestPayment({
+      storeId:     import.meta.env.VITE_PORTONE_STORE_ID,
+      channelKey:  config.channelKey,
+      paymentId,
+      orderName,
+      totalAmount: order.totalAmount,   // 백엔드 확정 금액 사용
+      currency:    'CURRENCY_KRW',
+      payMethod:   config.payMethod,
+      ...(config.payMethod === 'EASY_PAY' && {
+        easyPay: { easyPayProvider: (config as typeof PAYMENT_CONFIG['kakao']).easyPayProvider },
+      }),
+      customer: {
+        fullName: authStore.user?.nickName ?? '',
+        email:    authStore.user?.email    ?? '',
+      },
+    })
+
+    // 3. 결제 취소 또는 오류
+    if (response?.code !== undefined) {
+      alert(response.message ?? '결제가 취소되었습니다.')
+      return
+    }
+
+    // 4. 백엔드 결제 검증 (금액 위변조 방지 — 서버가 PortOne API로 재확인)
+    await paymentApi.verify({ paymentId: response.paymentId, orderId })
+
+    // 5. 성공 → 장바구니 정리 후 완료 페이지
     await cartStore.clearChecked()
-    router.push('/orders/complete')
+    router.push(`/orders/complete?orderId=${orderId}`)
+
   } catch (e: any) {
     if (e?.response?.status === 403) {
-      // 내 상품이 포함된 경우 → 장바구니에서 제거 후 안내
       const myNick = authStore.user?.nickName
       if (myNick) {
         const ownItems = checkedItems.value.filter(i => i.sellerNickName === myNick)
@@ -210,7 +242,7 @@ const handleOrder = async () => {
       alert('내가 등록한 상품은 구매할 수 없습니다. 해당 상품이 장바구니에서 제거되었습니다.')
       router.push('/cart')
     } else {
-      alert(e?.response?.data?.message ?? '주문에 실패했습니다. 다시 시도해주세요.')
+      alert(e?.response?.data?.message ?? '결제에 실패했습니다. 다시 시도해주세요.')
     }
   } finally {
     isSubmitting.value = false
@@ -479,46 +511,9 @@ onMounted(loadAddresses)
               </button>
             </div>
 
-            <!-- Card Input Fields -->
-            <div v-if="paymentMethod === 'card'" class="mt-4 space-y-4">
-              <div>
-                <label class="text-sm text-slate-500 mb-2 block">카드 번호</label>
-                <div class="relative">
-                  <input
-                      :value="cardNumber"
-                      @input="handleCardNumberInput"
-                      type="text"
-                      placeholder="0000-0000-0000-0000"
-                      maxlength="19"
-                      class="w-full px-4 py-3 pl-12 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                  />
-                  <CreditCard class="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="text-sm text-slate-500 mb-2 block">유효기간</label>
-                  <input
-                      :value="cardExpiry"
-                      @input="handleExpiryInput"
-                      type="text"
-                      placeholder="MM/YY"
-                      maxlength="5"
-                      class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                  />
-                </div>
-                <div>
-                  <label class="text-sm text-slate-500 mb-2 block">생년월일</label>
-                  <input
-                      v-model="cardBirth"
-                      type="text"
-                      placeholder="YYMMDD"
-                      maxlength="6"
-                      class="w-full px-4 py-3 rounded-xl border border-sky-100 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
+            <!-- 신용카드: PortOne 결제창에서 직접 입력 -->
+            <div v-if="paymentMethod === 'card'" class="mt-4 p-4 rounded-xl bg-sky-50 border border-sky-100 text-sm text-slate-500 text-center">
+              카드 정보는 PortOne 보안 결제창에서 안전하게 입력됩니다
             </div>
           </section>
         </div>
