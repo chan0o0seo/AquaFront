@@ -5,11 +5,11 @@ import {
   Shield, ClipboardList, Users, Package, Gavel, MessageSquare,
   CheckCircle, XCircle, Check, X, Loader2, Percent, Banknote,
   Plus, Edit2, Trash2, Play, Search, ChevronLeft, ChevronRight,
-  Bell, Send, FlaskConical
+  Bell, Send, FlaskConical, Headphones, MessageCircle, Pin, PinOff
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { sellerApi, settlementApi, adminApi, type SellerApplicationResponse, type CommissionPolicyResponse, type CommissionPolicyRequest, type AdminMemberResponse, type MemberRole, type AdminProductResponse, type AdminProductStatus, type AdminAuctionResponse, type AdminAuctionStatus, type AdminPostResponse } from '@/api'
+import { sellerApi, settlementApi, adminApi, type SellerApplicationResponse, type CommissionPolicyResponse, type CommissionPolicyRequest, type AdminMemberResponse, type MemberRole, type AdminProductResponse, type AdminProductStatus, type AdminAuctionResponse, type AdminAuctionStatus, type AdminPostResponse, type AdminInquiryResponse } from '@/api'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -430,6 +430,7 @@ const isLoadingPosts = ref(false)
 const postsError = ref('')
 const postKeyword = ref('')
 const includeDeleted = ref(false)
+const postCategoryType = ref('')
 const postPage = ref(0)
 const postTotalPages = ref(0)
 const postTotalElements = ref(0)
@@ -438,7 +439,7 @@ async function fetchPosts(page = 0) {
   isLoadingPosts.value = true
   postsError.value = ''
   try {
-    const result = await adminApi.getPosts({ keyword: postKeyword.value, includeDeleted: includeDeleted.value, page, size: PAGE_SIZE })
+    const result = await adminApi.getPosts({ keyword: postKeyword.value, includeDeleted: includeDeleted.value, categoryType: postCategoryType.value, page, size: PAGE_SIZE })
     posts.value = result.content
     postPage.value = result.number
     postTotalPages.value = result.totalPages
@@ -447,6 +448,24 @@ async function fetchPosts(page = 0) {
     postsError.value = e?.response?.data?.message ?? '게시글 목록을 불러오지 못했습니다.'
   } finally {
     isLoadingPosts.value = false
+  }
+}
+
+// 상단 고정 토글
+const isTogglingTopFix = ref<number | null>(null)
+
+async function handleToggleTopFix(post: AdminPostResponse) {
+  if (isTogglingTopFix.value) return
+  isTogglingTopFix.value = post.id
+  try {
+    const updated = await adminApi.toggleTopFix(post.id)
+    const idx = posts.value.findIndex(p => p.id === post.id)
+    if (idx !== -1) posts.value[idx] = updated
+    posts.value.sort((a, b) => (b.topFixed ? 1 : 0) - (a.topFixed ? 1 : 0))
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '상단 고정 변경에 실패했습니다.')
+  } finally {
+    isTogglingTopFix.value = null
   }
 }
 
@@ -533,6 +552,70 @@ async function confirmSendMarketing() {
   }
 }
 
+// ── 고객센터 문의 ──────────────────────────────────
+const INQUIRY_CATEGORY_LABELS: Record<string, string> = {
+  ORDER_PAYMENT: '결제/주문', AUCTION: '경매', PRODUCT: '상품',
+  SELLER: '판매자', ACCOUNT: '계정', OTHER: '기타',
+}
+
+const inquiries = ref<AdminInquiryResponse[]>([])
+const isLoadingInquiries = ref(false)
+const inquiriesError = ref('')
+const inquiryPage = ref(0)
+const inquiryTotalPages = ref(0)
+const inquiryTotalElements = ref(0)
+const inquiryKeyword = ref('')
+const inquiryCategoryFilter = ref('')
+const inquiryStatusFilter = ref('')
+
+async function fetchInquiries(page = 0) {
+  isLoadingInquiries.value = true
+  inquiriesError.value = ''
+  try {
+    const result = await adminApi.getInquiries({
+      keyword: inquiryKeyword.value,
+      category: inquiryCategoryFilter.value,
+      status: inquiryStatusFilter.value,
+      page,
+      size: PAGE_SIZE,
+    })
+    inquiries.value = result.content
+    inquiryPage.value = result.number
+    inquiryTotalPages.value = result.totalPages
+    inquiryTotalElements.value = result.totalElements
+  } catch (e: any) {
+    inquiriesError.value = e?.response?.data?.message ?? '문의 목록을 불러오지 못했습니다.'
+  } finally {
+    isLoadingInquiries.value = false
+  }
+}
+
+const showReplyModal = ref(false)
+const selectedInquiry = ref<AdminInquiryResponse | null>(null)
+const replyContent = ref('')
+const isSubmittingReply = ref(false)
+
+function openReplyModal(inquiry: AdminInquiryResponse) {
+  selectedInquiry.value = inquiry
+  replyContent.value = inquiry.adminReply ?? ''
+  showReplyModal.value = true
+}
+
+async function confirmReply() {
+  if (!selectedInquiry.value || !replyContent.value.trim() || isSubmittingReply.value) return
+  isSubmittingReply.value = true
+  try {
+    const updated = await adminApi.replyInquiry(selectedInquiry.value.id, replyContent.value)
+    const idx = inquiries.value.findIndex(i => i.id === selectedInquiry.value!.id)
+    if (idx !== -1) inquiries.value[idx] = updated
+    showReplyModal.value = false
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '답변 등록에 실패했습니다.')
+  } finally {
+    isSubmittingReply.value = false
+  }
+}
+
 // ── 공통 ─────────────────────────────────────────
 const navItems = [
   { key: 'applications', icon: ClipboardList, label: '판매자 신청 관리' },
@@ -542,6 +625,7 @@ const navItems = [
   { key: 'products',     icon: Package,       label: '상품 관리' },
   { key: 'auctions',     icon: Gavel,         label: '경매 관리' },
   { key: 'community',    icon: MessageSquare, label: '커뮤니티 관리' },
+  { key: 'inquiries',    icon: Headphones,    label: '고객센터 문의' },
   { key: 'push',         icon: Bell,          label: '마케팅 푸시' },
 ]
 
@@ -553,6 +637,7 @@ function handleTabChange(key: string) {
   if (key === 'products' && products.value.length === 0) fetchProducts(0)
   if (key === 'auctions' && auctions.value.length === 0) fetchAuctions(0)
   if (key === 'community' && posts.value.length === 0) fetchPosts(0)
+  if (key === 'inquiries' && inquiries.value.length === 0) fetchInquiries(0)
 }
 
 onMounted(fetchApplications)
@@ -1176,10 +1261,18 @@ function formatDate(dateStr: string) {
             <div class="flex gap-3 mb-5">
               <div class="relative flex-1">
                 <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input v-model="postKeyword" type="text" placeholder="게시글 제목, 작성자 검색"
+                <input v-model="postKeyword" type="text" placeholder="게시글 제목, 내용 검색"
                   class="w-full pl-9 pr-4 py-2.5 border border-sky-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                   @keydown.enter="fetchPosts(0)" />
               </div>
+              <select v-model="postCategoryType" @change="fetchPosts(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 카테고리</option>
+                <option value="NOTICE">공지사항</option>
+                <option value="FREE">자유게시판</option>
+                <option value="WIKI">정보/위키</option>
+                <option value="QNA">Q&A</option>
+              </select>
               <label class="flex items-center gap-2 px-4 border border-sky-100 rounded-xl cursor-pointer select-none text-sm text-slate-600">
                 <input type="checkbox" v-model="includeDeleted" @change="fetchPosts(0)" class="w-4 h-4 accent-sky-500" />
                 삭제글 포함
@@ -1197,6 +1290,7 @@ function formatDate(dateStr: string) {
                 <table class="w-full text-sm">
                   <thead>
                     <tr class="border-b border-sky-50 bg-slate-50 text-left">
+                      <th class="px-4 py-3 font-semibold text-slate-500 text-xs w-8">고정</th>
                       <th class="px-4 py-3 font-semibold text-slate-500 text-xs">제목</th>
                       <th class="px-4 py-3 font-semibold text-slate-500 text-xs">작성자</th>
                       <th class="px-4 py-3 font-semibold text-slate-500 text-xs">카테고리</th>
@@ -1208,9 +1302,19 @@ function formatDate(dateStr: string) {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-sky-50">
-                    <tr v-for="post in posts" :key="post.id" class="hover:bg-sky-50/40 transition" :class="post.deleted ? 'opacity-50' : ''">
+                    <tr v-for="post in posts" :key="post.id" class="hover:bg-sky-50/40 transition" :class="[post.deleted ? 'opacity-50' : '', post.topFixed ? 'bg-amber-50/40' : '']">
+                      <td class="px-4 py-3 text-center">
+                        <button @click="handleToggleTopFix(post)" :disabled="!!isTogglingTopFix || post.deleted"
+                          class="p-1 rounded transition disabled:opacity-30"
+                          :class="post.topFixed ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-amber-400'"
+                          :title="post.topFixed ? '고정 해제' : '상단 고정'">
+                          <Pin v-if="post.topFixed" class="w-4 h-4" />
+                          <PinOff v-else class="w-4 h-4" />
+                        </button>
+                      </td>
                       <td class="px-4 py-3">
                         <div class="flex items-center gap-2">
+                          <span v-if="post.topFixed" class="inline-flex px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-600 flex-shrink-0">고정</span>
                           <span v-if="post.deleted" class="inline-flex px-1.5 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-500 flex-shrink-0">삭제</span>
                           <span class="font-medium text-slate-800 truncate max-w-[180px]">{{ post.title }}</span>
                         </div>
@@ -1243,6 +1347,88 @@ function formatDate(dateStr: string) {
               </div>
             </div>
           </div>
+
+          <!-- ── 고객센터 문의 관리 탭 ── -->
+          <div v-else-if="activeTab === 'inquiries'">
+            <div class="flex items-center justify-between mb-6">
+              <h1 class="text-2xl font-black text-slate-900">고객센터 문의 관리</h1>
+              <span class="text-sm text-slate-400">총 {{ inquiryTotalElements.toLocaleString() }}건</span>
+            </div>
+            <!-- 검색 / 필터 -->
+            <div class="flex gap-3 mb-5">
+              <div class="relative flex-1">
+                <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input v-model="inquiryKeyword" type="text" placeholder="제목, 내용, 이메일 검색"
+                  class="w-full pl-9 pr-4 py-2.5 border border-sky-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  @keydown.enter="fetchInquiries(0)" />
+              </div>
+              <select v-model="inquiryCategoryFilter" @change="fetchInquiries(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 유형</option>
+                <option v-for="(label, key) in INQUIRY_CATEGORY_LABELS" :key="key" :value="key">{{ label }}</option>
+              </select>
+              <select v-model="inquiryStatusFilter" @change="fetchInquiries(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 상태</option>
+                <option value="PENDING">대기중</option>
+                <option value="ANSWERED">답변완료</option>
+              </select>
+              <button @click="fetchInquiries(0)" class="px-5 py-2.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold rounded-xl transition">검색</button>
+            </div>
+            <div v-if="isLoadingInquiries" class="flex justify-center py-24"><Loader2 class="w-8 h-8 animate-spin text-sky-400" /></div>
+            <div v-else-if="inquiriesError" class="text-center py-24 text-red-500 text-sm">{{ inquiriesError }}</div>
+            <div v-else-if="inquiries.length === 0" class="text-center py-24">
+              <Headphones class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+              <p class="text-slate-400 text-sm">문의 내역이 없습니다</p>
+            </div>
+            <div v-else class="space-y-3">
+              <div
+                v-for="inq in inquiries"
+                :key="inq.id"
+                class="bg-white rounded-2xl border border-sky-100 p-5"
+              >
+                <div class="flex items-start justify-between gap-4">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                        :class="inq.status === 'ANSWERED' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'">
+                        {{ inq.status === 'ANSWERED' ? '답변완료' : '대기중' }}
+                      </span>
+                      <span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">
+                        {{ INQUIRY_CATEGORY_LABELS[inq.category] ?? inq.category }}
+                      </span>
+                    </div>
+                    <div class="font-semibold text-slate-900 text-sm truncate">{{ inq.title }}</div>
+                    <div class="text-xs text-slate-400 mt-0.5">{{ inq.email }} · {{ formatDate(inq.createdAt) }}</div>
+                    <div class="text-sm text-slate-600 mt-2 line-clamp-2">{{ inq.content }}</div>
+                    <div v-if="inq.adminReply" class="mt-3 bg-sky-50 rounded-xl px-4 py-3">
+                      <div class="text-xs font-semibold text-sky-600 mb-1">관리자 답변</div>
+                      <div class="text-sm text-slate-700">{{ inq.adminReply }}</div>
+                      <div class="text-xs text-slate-400 mt-1">{{ formatDate(inq.repliedAt!) }}</div>
+                    </div>
+                  </div>
+                  <button
+                    @click="openReplyModal(inq)"
+                    class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition"
+                    :class="inq.status === 'ANSWERED' ? 'border border-sky-100 text-slate-500 hover:bg-sky-50' : 'bg-sky-500 hover:bg-sky-600 text-white'"
+                  >
+                    <MessageCircle class="w-3.5 h-3.5" />
+                    {{ inq.status === 'ANSWERED' ? '수정' : '답변' }}
+                  </button>
+                </div>
+              </div>
+              <div v-if="inquiryTotalPages > 1" class="flex items-center justify-center gap-2 mt-5">
+                <button @click="fetchInquiries(inquiryPage - 1)" :disabled="inquiryPage === 0" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  <ChevronLeft class="w-4 h-4" />
+                </button>
+                <span class="text-sm text-slate-500 px-2">{{ inquiryPage + 1 }} / {{ inquiryTotalPages }}</span>
+                <button @click="fetchInquiries(inquiryPage + 1)" :disabled="inquiryPage >= inquiryTotalPages - 1" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  <ChevronRight class="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
@@ -1503,6 +1689,42 @@ function formatDate(dateStr: string) {
         </div>
       </div>
     </Transition>
+  <!-- Inquiry Reply Modal -->
+  <Transition name="fade">
+    <div v-if="showReplyModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div class="max-w-lg w-full bg-white rounded-2xl shadow-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <Headphones class="w-8 h-8 text-sky-500" />
+          <div>
+            <h2 class="font-black text-slate-900 text-lg">{{ selectedInquiry?.status === 'ANSWERED' ? '답변 수정' : '답변 등록' }}</h2>
+            <p class="text-xs text-slate-400 truncate">{{ selectedInquiry?.title }}</p>
+          </div>
+        </div>
+        <div class="bg-slate-50 rounded-xl px-4 py-3 mb-4">
+          <div class="text-xs text-slate-400 mb-1">문의 내용</div>
+          <p class="text-sm text-slate-700">{{ selectedInquiry?.content }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5">답변 내용 <span class="text-red-400">*</span></label>
+          <textarea
+            v-model="replyContent"
+            rows="5"
+            placeholder="답변 내용을 입력해주세요."
+            class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 resize-none"
+          />
+          <div class="text-xs text-right text-slate-400 mt-1">{{ replyContent.length }}자</div>
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button @click="showReplyModal = false" :disabled="isSubmittingReply" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
+          <button @click="confirmReply" :disabled="!replyContent.trim() || isSubmittingReply" class="flex-1 px-4 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full text-sm font-bold transition flex items-center justify-center gap-2">
+            <Loader2 v-if="isSubmittingReply" class="w-4 h-4 animate-spin" />
+            {{ isSubmittingReply ? '저장 중...' : '답변 저장' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
   </div>
 </template>
 

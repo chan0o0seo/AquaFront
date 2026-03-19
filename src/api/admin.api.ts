@@ -81,6 +81,24 @@ export interface AdminPostResponse {
   likeCount: number
   commentCount: number
   deleted: boolean
+  topFixed: boolean
+  createdAt: string
+}
+
+// ── 고객센터 문의 ─────────────────────────────────────────────────────────────
+
+type InquiryCategory = 'ORDER_PAYMENT' | 'AUCTION' | 'PRODUCT' | 'SELLER' | 'ACCOUNT' | 'OTHER'
+type InquiryStatus = 'PENDING' | 'ANSWERED'
+
+export interface AdminInquiryResponse {
+  id: number
+  category: InquiryCategory
+  title: string
+  content: string
+  email: string
+  status: InquiryStatus
+  adminReply: string | null
+  repliedAt: string | null
   createdAt: string
 }
 
@@ -145,10 +163,15 @@ export const adminApi = {
     ).then(unwrap),
 
   // ── 커뮤니티 ────────────────────────────────────────
-  getPosts: (params: { keyword?: string; includeDeleted?: boolean; page?: number; size?: number }) =>
+  getPosts: (params: { keyword?: string; includeDeleted?: boolean; categoryType?: string; page?: number; size?: number }) =>
     api.get<{ success: boolean; data: AdminPage<AdminPostResponse>; message: string }>(
       '/admin/community/posts',
-      { params: { page: params.page ?? 0, size: params.size ?? 15, keyword: params.keyword || undefined, includeDeleted: params.includeDeleted ?? false } }
+      { params: { page: params.page ?? 0, size: params.size ?? 15, keyword: params.keyword || undefined, includeDeleted: params.includeDeleted ?? false, categoryType: params.categoryType || undefined } }
+    ).then(unwrap),
+
+  toggleTopFix: (id: number) =>
+    api.patch<{ success: boolean; data: AdminPostResponse; message: string }>(
+      `/admin/community/posts/${id}/top-fix`
     ).then(unwrap),
 
   deletePost: (id: number) =>
@@ -156,6 +179,18 @@ export const adminApi = {
 
   deleteComment: (id: number) =>
     api.delete(`/admin/community/comments/${id}`),
+
+  // ── 고객센터 문의 ────────────────────────────────────────
+  getInquiries: (params: { keyword?: string; category?: string; status?: string; page?: number; size?: number }) =>
+    api.get<{ success: boolean; data: AdminPage<AdminInquiryResponse>; message: string }>(
+      '/admin/inquiries',
+      { params: { page: params.page ?? 0, size: params.size ?? 20, keyword: params.keyword || undefined, category: params.category || undefined, status: params.status || undefined } }
+    ).then(unwrap),
+
+  replyInquiry: (id: number, replyContent: string) =>
+    api.patch<{ success: boolean; data: AdminInquiryResponse; message: string }>(
+      `/admin/inquiries/${id}/reply`, { replyContent }
+    ).then(unwrap),
 
   // ── 푸시 알림 ────────────────────────────────────────
   sendTestPush: (body: { targetEmail: string; title: string; body: string; imageUrl?: string }) =>
