@@ -17,7 +17,7 @@ export type { NotificationItem, NotificationType as NotificationTypeEnum } from 
 export { adminApi } from './admin.api'
 export { inquiryApi } from './inquiry.api'
 export type { InquiryResponse, CreateInquiryRequest, InquiryCategory, InquiryStatus } from './inquiry.api'
-export type { AdminMemberResponse, AdminMemberPage, AdminPage, MemberRole, AdminProductResponse, AdminProductStatus, AdminAuctionResponse, AdminAuctionStatus, AdminPostResponse } from './admin.api'
+export type { AdminMemberResponse, AdminMemberPage, AdminPage, MemberRole, AdminProductResponse, AdminProductStatus, AdminAuctionResponse, AdminAuctionStatus, AdminPostResponse, AdminInquiryResponse } from './admin.api'
 
 
 export type { BoardCategoryResponse, PostSummaryResponse, PostDetailResponse, CommentResponse } from './community.api'
