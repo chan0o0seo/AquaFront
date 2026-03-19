@@ -29,7 +29,7 @@ const name = ref('')
 const nickname = ref('')
 const nicknameStatus = ref<'idle' | 'checking' | 'available' | 'taken'>('idle')
 const phone = ref('')
-const memberType = ref<'BUYER' | 'SELLER' | 'BREEDER' | null>(null)
+const memberType = ref<'BUYER' | 'SELLER' | null>(null)
 const referralCode = ref('')
 
 // Step 3: Interests
@@ -48,7 +48,6 @@ const interestTags = [
 const memberTypes = [
   { value: 'BUYER', icon: '🐠', label: '일반 구매자', description: '생물과 용품을 구매하고 싶어요' },
   { value: 'SELLER', icon: '🏪', label: '수족관 운영자', description: '입점하여 판매하고 싶어요' },
-  { value: 'BREEDER', icon: '🔬', label: '홈 브리더', description: '직접 키운 개체를 경매하고 싶어요' },
 ]
 
 // Password requirements
@@ -509,7 +508,7 @@ onUnmounted(() => {
                   <button
                     v-for="type in memberTypes"
                     :key="type.value"
-                    @click="memberType = type.value as 'BUYER' | 'SELLER' | 'BREEDER'"
+                    @click="memberType = type.value as 'BUYER' | 'SELLER'"
                     class="rounded-2xl border-2 p-4 cursor-pointer transition-all duration-150 text-left"
                     :class="memberType === type.value ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white hover:border-slate-300'"
                   >

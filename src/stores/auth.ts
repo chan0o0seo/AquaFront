@@ -13,7 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => user.value !== null)
   const isSeller = computed(() =>
-    user.value?.role === 'SELLER' || user.value?.role === 'BREEDER'
+    user.value?.role === 'SELLER'
   )
   const isAdmin = computed(() => user.value?.role === 'ADMIN')
 

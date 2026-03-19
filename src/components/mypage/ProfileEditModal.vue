@@ -8,7 +8,7 @@ const authStore = useAuthStore()
 
 const props = defineProps<{
   modelValue: boolean
-  user: { nickname: string; initial: string; memberType: 'buyer' | 'seller' | 'breeder' }
+  user: { nickname: string; initial: string; memberType: 'buyer' | 'seller' }
 }>()
 
 const emit = defineEmits<{
@@ -96,9 +96,8 @@ onUnmounted(() => {
 })
 
 const memberTypeMap = {
-  buyer:   { label: '일반 구매자',   class: 'bg-sky-100 text-sky-600' },
-  seller:  { label: '수족관 운영자', class: 'bg-amber-100 text-amber-600' },
-  breeder: { label: '홈 브리더',     class: 'bg-emerald-100 text-emerald-600' },
+  buyer:  { label: '일반 구매자',   class: 'bg-sky-100 text-sky-600' },
+  seller: { label: '수족관 운영자', class: 'bg-amber-100 text-amber-600' },
 }
 </script>
 

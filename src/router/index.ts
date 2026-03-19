@@ -20,6 +20,18 @@ const routes = [
   { path: '/community/:postId/edit', name: 'CommunityEdit', component: () => import('@/pages/CommunityWritePage.vue'),     meta: { title: '글 수정' } },
   { path: '/error',              name: 'ServerError',        component: () => import('@/pages/ServerErrorPage.vue'),        meta: { title: '오류' } },
   { path: '/oauth2/callback',    name: 'OAuth2Callback',     component: () => import('@/pages/OAuth2CallbackPage.vue') },
+  { path: '/support',            name: 'Support',            component: () => import('@/pages/SupportPage.vue'),            meta: { title: '고객센터' } },
+  { path: '/about',             name: 'About',              component: () => import('@/pages/AboutPage.vue'),             meta: { title: '회사 소개' } },
+  { path: '/guide',             name: 'Guide',              component: () => import('@/pages/GuidePage.vue'),             meta: { title: '이용 가이드' } },
+  { path: '/pricing',           name: 'Pricing',            component: () => import('@/pages/PricingPage.vue'),           meta: { title: '요금 안내' } },
+  { path: '/partnership',       name: 'Partnership',        component: () => import('@/pages/PartnershipPage.vue'),       meta: { title: '제휴 문의' } },
+  { path: '/shipping-policy',   name: 'ShippingPolicy',     component: () => import('@/pages/ShippingPolicyPage.vue'),    meta: { title: '배송 정책' } },
+  { path: '/notice',            name: 'Notice',             component: () => import('@/pages/NoticePage.vue'),            meta: { title: '공지사항' } },
+  { path: '/events',            name: 'Events',             component: () => import('@/pages/EventsPage.vue'),            meta: { title: '이벤트' } },
+  { path: '/terms',             name: 'Terms',              component: () => import('@/pages/TermsPage.vue'),             meta: { title: '서비스 이용약관' } },
+  { path: '/privacy',           name: 'Privacy',            component: () => import('@/pages/PrivacyPage.vue'),           meta: { title: '개인정보처리방침' } },
+  { path: '/location-terms',    name: 'LocationTerms',      component: () => import('@/pages/LocationTermsPage.vue'),     meta: { title: '위치기반서비스' } },
+  { path: '/youth-policy',      name: 'YouthPolicy',        component: () => import('@/pages/YouthPolicyPage.vue'),       meta: { title: '청소년보호정책' } },
   { path: '/withdraw/complete',  name: 'WithdrawComplete',   component: () => import('@/pages/WithdrawCompletePage.vue'),   meta: { title: '탈퇴 완료' } },
 
   // ── 로그인 필요 ───────────────────────────────────────

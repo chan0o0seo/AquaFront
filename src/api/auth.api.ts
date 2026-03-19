@@ -20,7 +20,7 @@ export interface SignUpRequest {
   termsAgreed: boolean
   privacyAgreed: boolean
   marketingAgreed: boolean
-  role: 'BUYER' | 'SELLER' | 'BREEDER'
+  role: 'BUYER' | 'SELLER'
 }
 
 export interface EmailVerifyRequest {
@@ -44,7 +44,7 @@ export interface AuthMember {
   phoneNumber: string
   profileImageUrl?: string
   marketingAgreed: boolean
-  role: 'BUYER' | 'SELLER' | 'BREEDER' | 'ADMIN'
+  role: 'BUYER' | 'SELLER' | 'ADMIN'
   oauthProvider?: 'KAKAO' | 'NAVER' | null
 }
 

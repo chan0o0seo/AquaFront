@@ -192,13 +192,11 @@ const PAGE_SIZE = 15
 const ROLE_LABELS: Record<MemberRole, string> = {
   BUYER: '구매자',
   SELLER: '판매자',
-  BREEDER: '브리더',
   ADMIN: '관리자',
 }
 const ROLE_COLORS: Record<MemberRole, string> = {
   BUYER: 'bg-slate-100 text-slate-600',
   SELLER: 'bg-sky-100 text-sky-700',
-  BREEDER: 'bg-teal-100 text-teal-700',
   ADMIN: 'bg-red-100 text-red-700',
 }
 
@@ -779,7 +777,6 @@ function formatDate(dateStr: string) {
                 <option value="">전체 역할</option>
                 <option value="BUYER">구매자</option>
                 <option value="SELLER">판매자</option>
-                <option value="BREEDER">브리더</option>
                 <option value="ADMIN">관리자</option>
               </select>
               <button
@@ -1421,7 +1418,6 @@ function formatDate(dateStr: string) {
           >
             <option value="BUYER">구매자</option>
             <option value="SELLER">판매자</option>
-            <option value="BREEDER">브리더</option>
             <option value="ADMIN">관리자</option>
           </select>
         </div>

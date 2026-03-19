@@ -15,6 +15,8 @@ export { settlementApi } from './settlement.api'
 export { notificationApi } from './notification.api'
 export type { NotificationItem, NotificationType as NotificationTypeEnum } from './notification.api'
 export { adminApi } from './admin.api'
+export { inquiryApi } from './inquiry.api'
+export type { InquiryResponse, CreateInquiryRequest, InquiryCategory, InquiryStatus } from './inquiry.api'
 export type { AdminMemberResponse, AdminMemberPage, AdminPage, MemberRole, AdminProductResponse, AdminProductStatus, AdminAuctionResponse, AdminAuctionStatus, AdminPostResponse } from './admin.api'
 
 
@@ -26,7 +28,7 @@ export type { ProductSummary, ProductDetail, ProductImage, ProductSearchParams, 
 export { getThumbnailUrl } from './product.api'
 export type { OrderResponse, OrderItemResponse, CreateOrderRequest, OrderStatus } from './order.api'
 export { ORDER_STATUS_LABEL } from './order.api'
-export type { AuctionResponse, BidResponse, MyBidResponse, AuctionStatus } from './auction.api'
+export type { AuctionResponse, BidResponse, MyBidResponse, AuctionStatus, ChatMessageResponse } from './auction.api'
 export type { SellerApplicationResponse, SellerApplicationRequest, SellerProfileResponse, SellerProfileUpdateRequest, CreateProductRequest, SellerStats, FollowedSellerResponse, CommissionPolicyResponse, CommissionPolicyRequest } from './seller.api'
 export type { PresignedUrlResponse } from './s3.api'
 export type { PaymentResponse, PaymentVerifyRequest, PaymentStatus, PaymentMethod } from './payment.api'

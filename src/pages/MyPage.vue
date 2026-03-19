@@ -32,7 +32,7 @@ const {
 const user = computed(() => ({
   nickname: authUser.value?.nickName,
   initial: authUser.value?.nickName.charAt(0),
-  memberType: (authUser.value?.role?.toLowerCase() ?? 'buyer') as 'buyer' | 'seller' | 'breeder',
+  memberType: (authUser.value?.role?.toLowerCase() ?? 'buyer') as 'buyer' | 'seller',
 }))
 
 // Active tab
@@ -132,7 +132,7 @@ const menuItems = computed(() => {
     { key: 'notifications', icon: Bell, label: '알림 설정' },
   ]
 
-  if (user.value.memberType !== 'seller' && user.value.memberType !== 'breeder') {
+  if (user.value.memberType !== 'seller') {
     items.push({ key: 'seller', icon: Store, label: '판매자 전환 신청' })
   }
 
@@ -158,9 +158,8 @@ const memberTypeBadge = computed(() => {
   const types = {
     buyer: { label: '일반 구매자', class: 'bg-sky-100 text-sky-600' },
     seller: { label: '수족관 운영자', class: 'bg-amber-100 text-amber-600' },
-    breeder: { label: '홈 브리더', class: 'bg-emerald-100 text-emerald-600' },
   }
-  return types[user.value.memberType]
+  return types[user.value.memberType] ?? types.buyer
 })
 
 // Notification toggles
@@ -531,8 +530,8 @@ function goToOrderDetail(orderId: number) {
 
           <!-- Seller Tab -->
           <div v-show="activeTab === 'seller'">
-            <!-- 판매자/브리더: 대시보드 이동 -->
-            <template v-if="user.memberType === 'seller' || user.memberType === 'breeder'">
+            <!-- 판매자: 대시보드 이동 -->
+            <template v-if="user.memberType === 'seller'">
               <h1 class="text-3xl font-black text-slate-900 mb-6">판매자 센터</h1>
               <div class="bg-sky-50 rounded-2xl p-8 border border-sky-100 text-center">
                 <p class="text-slate-600 mb-4">대시보드에서 상품과 통계를 관리하세요.</p>

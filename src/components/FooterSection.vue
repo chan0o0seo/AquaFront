@@ -1,22 +1,42 @@
 <script setup lang="ts">
 import { Fish } from 'lucide-vue-next'
+import { RouterLink } from 'vue-router'
 
 const footerLinks = [
   {
     title: '서비스 소개',
-    links: ['회사 소개', '이용 가이드', '요금 안내', '제휴 문의']
+    links: [
+      { label: '회사 소개', to: '/about' },
+      { label: '이용 가이드', to: '/guide' },
+      { label: '요금 안내', to: '/pricing' },
+      { label: '제휴 문의', to: '/partnership' },
+    ]
   },
   {
     title: '입점 안내',
-    links: ['수족관 입점', '브리더 등록', '판매자 센터', '배송 정책']
+    links: [
+      { label: '수족관 입점', to: '/seller/apply' },
+      { label: '판매자 센터', to: '/mypage/seller' },
+      { label: '배송 정책', to: '/shipping-policy' },
+    ]
   },
   {
     title: '고객센터',
-    links: ['자주 묻는 질문', '1:1 문의', '공지사항', '이벤트']
+    links: [
+      { label: '자주 묻는 질문', to: '/support' },
+      { label: '1:1 문의', to: '/support' },
+      { label: '공지사항', to: '/notice' },
+      { label: '이벤트', to: '/events' },
+    ]
   },
   {
     title: '이용약관',
-    links: ['서비스 이용약관', '개인정보처리방침', '위치기반서비스', '청소년보호정책']
+    links: [
+      { label: '서비스 이용약관', to: '/terms' },
+      { label: '개인정보처리방침', to: '/privacy' },
+      { label: '위치기반서비스', to: '/location-terms' },
+      { label: '청소년보호정책', to: '/youth-policy' },
+    ]
   },
 ]
 </script>
@@ -45,10 +65,17 @@ const footerLinks = [
         >
           <h4 class="text-white font-semibold">{{ column.title }}</h4>
           <ul class="space-y-2">
-            <li v-for="link in column.links" :key="link">
-              <a href="#" class="text-slate-400 text-sm hover:text-sky-400 transition-colors">
-                {{ link }}
-              </a>
+            <li v-for="link in column.links" :key="link.label">
+              <RouterLink
+                v-if="link.to"
+                :to="link.to"
+                class="text-slate-400 text-sm hover:text-sky-400 transition-colors"
+              >
+                {{ link.label }}
+              </RouterLink>
+              <span v-else class="text-slate-400 text-sm cursor-default">
+                {{ link.label }}
+              </span>
             </li>
           </ul>
         </div>

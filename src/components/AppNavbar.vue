@@ -63,6 +63,7 @@ const navLinks = [
   { name: '스토어', to: '/stores' },
   { name: '경매', to: '/auction' },
   { name: '커뮤니티', to: '/community' },
+  { name: '고객센터', to: '/support' },
 ]
 
 // Handle seller mode toggle
