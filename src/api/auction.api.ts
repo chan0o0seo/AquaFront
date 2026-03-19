@@ -42,6 +42,14 @@ export interface MyBidResponse {
   winning: boolean
 }
 
+export interface ChatMessageResponse {
+  id: number
+  senderNickName: string
+  senderProfileImageUrl: string | null
+  content: string
+  sentAt: string
+}
+
 export const auctionApi = {
   getActive: () =>
     api.get<{ success: boolean; data: AuctionResponse[] }>('/auctions/active').then(unwrap),
@@ -88,4 +96,7 @@ export const auctionApi = {
 
   getMyWatches: () =>
     api.get<{ success: boolean; data: AuctionResponse[] }>('/auctions/me/watches').then(unwrap),
+
+  getChatMessages: (auctionId: number) =>
+    api.get<{ success: boolean; data: ChatMessageResponse[] }>(`/auctions/${auctionId}/chat`).then(unwrap),
 }

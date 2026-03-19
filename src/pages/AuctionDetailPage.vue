@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, Gavel, Clock, Users, TrendingUp, Bell, Trophy, CalendarClock, Loader2 } from 'lucide-vue-next'
-import { auctionApi, type AuctionResponse, type BidResponse } from '@/api'
+import { ArrowLeft, Gavel, Clock, Users, TrendingUp, Bell, Trophy, CalendarClock, Loader2, MessageSquare, Send } from 'lucide-vue-next'
+import { auctionApi, type AuctionResponse, type BidResponse, type ChatMessageResponse } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
+import { Client } from '@stomp/stompjs'
 
 const router = useRouter()
 const route = useRoute()
@@ -26,6 +27,53 @@ const isTogglingWatch = ref(false)
 const isSubmittingBid = ref(false)
 const isBuyingNow = ref(false)
 const quickAddOptions = [5000, 10000, 30000]
+
+// 채팅
+const chatMessages = ref<ChatMessageResponse[]>([])
+const chatInput = ref('')
+const chatContainer = ref<HTMLElement | null>(null)
+let stompClient: Client | null = null
+
+const scrollChatToBottom = async () => {
+  await nextTick()
+  if (chatContainer.value) {
+    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+  }
+}
+
+const connectChat = () => {
+  if (stompClient?.active) return
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  stompClient = new Client({
+    brokerURL: `${protocol}//${window.location.host}/ws/auction`,
+    onConnect: () => {
+      stompClient!.subscribe(`/topic/auction/${auctionId}/chat`, (msg) => {
+        const message: ChatMessageResponse = JSON.parse(msg.body)
+        chatMessages.value.push(message)
+        scrollChatToBottom()
+      })
+    },
+    reconnectDelay: 5000,
+  })
+  stompClient.activate()
+}
+
+const sendChatMessage = () => {
+  const content = chatInput.value.trim()
+  if (!content || !stompClient?.active) return
+  stompClient.publish({
+    destination: `/app/auction/${auctionId}/chat`,
+    body: JSON.stringify({ content }),
+  })
+  chatInput.value = ''
+}
+
+const handleChatKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendChatMessage()
+  }
+}
 
 // 최소 입찰가: 현재가 + 1000원
 const minBid = computed(() => (auction.value?.currentPrice ?? 0) + 1000)
@@ -58,12 +106,14 @@ const isOwner = computed(() =>
 let interval: ReturnType<typeof setInterval>
 onMounted(async () => {
   try {
-    const [detail, bidList] = await Promise.all([
+    const [detail, bidList, chatHistory] = await Promise.all([
       auctionApi.getDetail(auctionId),
       auctionApi.getBids(auctionId),
+      auctionApi.getChatMessages(auctionId).catch(() => []),
     ])
     auction.value = detail
     bids.value = bidList
+    chatMessages.value = chatHistory
     bidAmount.value = minBid.value
     if (isLoggedIn.value) {
       notifyRequested.value = await auctionApi.isWatching(auctionId).catch(() => false)
@@ -73,9 +123,14 @@ onMounted(async () => {
   } finally {
     isLoading.value = false
   }
+  scrollChatToBottom()
+  connectChat()
   interval = setInterval(() => { now.value = Date.now() }, 1000)
 })
-onUnmounted(() => clearInterval(interval))
+onUnmounted(() => {
+  clearInterval(interval)
+  stompClient?.deactivate()
+})
 
 const openConfirm = () => {
   if (!isLoggedIn.value) { router.push('/login'); return }
@@ -515,6 +570,81 @@ const formatBidTime = (bidAt: string) => {
             <div v-else class="mt-4 bg-sky-50 rounded-2xl border border-sky-100 p-5 text-center">
               <CalendarClock class="w-8 h-8 text-sky-300 mx-auto mb-2" />
               <p class="text-sm text-slate-400">아직 입찰 내역이 없습니다</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="mt-12">
+          <div class="rounded-2xl border border-sky-100 overflow-hidden">
+            <!-- Header -->
+            <div class="flex items-center gap-2 px-5 py-3 bg-sky-50 border-b border-sky-100">
+              <MessageSquare class="w-4 h-4 text-sky-500" />
+              <span class="text-sm font-semibold text-slate-700">실시간 채팅</span>
+              <span v-if="chatMessages.length > 0" class="ml-auto text-xs text-slate-400">{{ chatMessages.length }}개</span>
+            </div>
+
+            <!-- Messages -->
+            <div ref="chatContainer" class="h-72 overflow-y-auto px-4 py-3 space-y-3 bg-white">
+              <div v-if="chatMessages.length === 0" class="h-full flex items-center justify-center">
+                <p class="text-sm text-slate-400">아직 채팅이 없습니다. 첫 메시지를 남겨보세요!</p>
+              </div>
+              <div v-for="msg in chatMessages" :key="msg.id" class="flex items-start gap-2.5">
+                <!-- Avatar -->
+                <div class="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden">
+                  <img
+                    v-if="msg.senderProfileImageUrl"
+                    :src="msg.senderProfileImageUrl"
+                    class="w-full h-full object-cover"
+                  />
+                  <div
+                    v-else
+                    class="w-full h-full bg-gradient-to-br from-sky-300 to-teal-400 flex items-center justify-center text-white font-bold text-xs"
+                  >
+                    {{ msg.senderNickName.charAt(0) }}
+                  </div>
+                </div>
+                <!-- Content -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-baseline gap-2 mb-0.5">
+                    <span
+                      class="text-xs font-semibold"
+                      :class="msg.senderNickName === user?.nickName ? 'text-sky-600' : 'text-slate-700'"
+                    >
+                      {{ msg.senderNickName }}{{ msg.senderNickName === user?.nickName ? ' (나)' : '' }}
+                    </span>
+                    <span class="text-[10px] text-slate-300 font-mono">{{ formatBidTime(msg.sentAt) }}</span>
+                  </div>
+                  <p class="text-sm text-slate-600 break-words leading-snug">{{ msg.content }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Input -->
+            <div class="border-t border-sky-100 px-4 py-3 bg-white">
+              <div v-if="!isLoggedIn" class="text-center text-sm text-slate-400 py-1">
+                <RouterLink to="/login" class="text-sky-500 hover:underline">로그인</RouterLink>하면 채팅에 참여할 수 있습니다
+              </div>
+              <div v-else class="flex items-center gap-2">
+                <input
+                  v-model="chatInput"
+                  @keydown="handleChatKeydown"
+                  type="text"
+                  placeholder="메시지를 입력하세요... (Enter 전송)"
+                  maxlength="300"
+                  class="flex-1 text-sm px-4 py-2 rounded-full border border-sky-100 bg-sky-50/50
+                         focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent
+                         placeholder:text-slate-300"
+                />
+                <button
+                  @click="sendChatMessage"
+                  :disabled="!chatInput.trim()"
+                  class="w-9 h-9 rounded-full bg-sky-500 hover:bg-sky-600 disabled:bg-slate-200
+                         flex items-center justify-center transition-colors flex-shrink-0"
+                >
+                  <Send class="w-4 h-4 text-white" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
