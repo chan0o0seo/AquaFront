@@ -102,6 +102,141 @@ export interface AdminInquiryResponse {
   createdAt: string
 }
 
+// ── 대시보드 ──────────────────────────────────────────────────────────────────
+
+export interface DashboardPopularProduct {
+  productId: number
+  name: string
+  soldCount: number
+}
+
+export interface DashboardPopularCategory {
+  categoryName: string
+  soldCount: number
+}
+
+export interface AdminDashboardResponse {
+  todayRevenue: number
+  thisMonthRevenue: number
+  todayOrderCount: number
+  thisMonthOrderCount: number
+  thisMonthCancelCount: number
+  cancelRate: number
+  thisMonthRefundCount: number
+  refundRate: number
+  todayNewMembers: number
+  thisMonthNewMembers: number
+  activeAuctions: number
+  scheduledAuctions: number
+  popularProducts: DashboardPopularProduct[]
+  popularCategories: DashboardPopularCategory[]
+}
+
+// ── 어드민 주문 ────────────────────────────────────────────────────────────────
+
+export type AdminOrderStatus = 'PENDING' | 'PAID' | 'SHIPPING' | 'DELIVERED' | 'CONFIRMED' | 'CANCELLED'
+
+export interface AdminOrderItemResponse {
+  productId: number
+  productName: string
+  quantity: number
+  unitPrice: number
+}
+
+export interface AdminOrderResponse {
+  orderId: number
+  status: AdminOrderStatus
+  buyerNickName: string
+  buyerEmail: string
+  items: AdminOrderItemResponse[]
+  recipientName: string
+  phoneNumber: string
+  address: string
+  detailAddress: string
+  totalAmount: number
+  shippingFee: number
+  courier: string | null
+  trackingNumber: string | null
+  createdAt: string
+}
+
+// ── 어드민 결제 ────────────────────────────────────────────────────────────────
+
+export type AdminPaymentStatus = 'PAID' | 'CANCELLED'
+
+export interface AdminPaymentResponse {
+  id: number
+  orderId: number
+  buyerNickName: string
+  buyerEmail: string
+  paymentId: string
+  amount: number
+  status: AdminPaymentStatus
+  payMethod: string
+  pgProvider: string
+  createdAt: string
+}
+
+// ── 신고 ──────────────────────────────────────────────────────────────────────
+
+export type ReportTargetType = 'MEMBER' | 'PRODUCT' | 'POST' | 'COMMENT'
+export type AdminReportStatus = 'PENDING' | 'PROCESSED' | 'DISMISSED'
+
+export interface AdminReportResponse {
+  id: number
+  reporterNickName: string
+  reporterEmail: string
+  targetType: ReportTargetType
+  targetId: number
+  reason: string
+  status: AdminReportStatus
+  processorNickName: string | null
+  processNote: string | null
+  createdAt: string
+}
+
+// ── 통계 ──────────────────────────────────────────────────────────────────────
+
+export interface AdminSellerStatsResponse {
+  sellerId: string
+  sellerNickName: string
+  sellerEmail: string
+  totalSalesAmount: number
+  totalCommission: number
+  totalNetAmount: number
+  settlementCount: number
+}
+
+export interface AdminProductStatsResponse {
+  productId: number
+  productName: string
+  sellerNickName: string
+  soldCount: number
+  totalRevenue: number
+}
+
+// ── 감사 로그 ─────────────────────────────────────────────────────────────────
+
+export type AuditAction =
+  | 'MEMBER_WARN' | 'MEMBER_SUSPEND' | 'MEMBER_UNSUSPEND'
+  | 'MEMBER_ROLE_CHANGE' | 'MEMBER_DELETE'
+  | 'POLICY_CREATE' | 'POLICY_UPDATE' | 'POLICY_DELETE'
+  | 'SETTLEMENT_COMPLETE' | 'SETTLEMENT_FAIL'
+  | 'ORDER_STATUS_CHANGE' | 'ORDER_CANCEL'
+  | 'REPORT_PROCESS'
+
+export type AuditTargetType = 'MEMBER' | 'COMMISSION_POLICY' | 'SETTLEMENT' | 'ORDER' | 'REPORT'
+
+export interface AuditLogResponse {
+  id: number
+  actorEmail: string
+  action: AuditAction
+  targetType: AuditTargetType
+  targetId: string | null
+  detail: string | null
+  createdAt: string
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 
 export const adminApi = {
@@ -198,4 +333,91 @@ export const adminApi = {
 
   sendMarketingPush: (body: { title: string; body: string; imageUrl?: string }) =>
     api.post('/admin/notifications/push/marketing', body),
+
+  // ── 대시보드 ────────────────────────────────────────
+  getDashboard: () =>
+    api.get<{ success: boolean; data: AdminDashboardResponse; message: string }>(
+      '/admin/dashboard'
+    ).then(unwrap),
+
+  // ── 어드민 주문 ────────────────────────────────────────
+  getAdminOrders: (params: { status?: string; page?: number; size?: number }) =>
+    api.get<{ success: boolean; data: AdminPage<AdminOrderResponse>; message: string }>(
+      '/admin/orders',
+      { params: { page: params.page ?? 0, size: params.size ?? 20, status: params.status || undefined } }
+    ).then(unwrap),
+
+  getAdminOrder: (orderId: number) =>
+    api.get<{ success: boolean; data: AdminOrderResponse; message: string }>(
+      `/admin/orders/${orderId}`
+    ).then(unwrap),
+
+  updateAdminOrderStatus: (orderId: number, status: AdminOrderStatus) =>
+    api.patch<{ success: boolean; data: AdminOrderResponse; message: string }>(
+      `/admin/orders/${orderId}/status`, { status }
+    ).then(unwrap),
+
+  cancelAdminOrder: (orderId: number) =>
+    api.delete(`/admin/orders/${orderId}`),
+
+  // ── 어드민 결제 ────────────────────────────────────────
+  getAdminPayments: (params: { status?: string; page?: number; size?: number }) =>
+    api.get<{ success: boolean; data: AdminPage<AdminPaymentResponse>; message: string }>(
+      '/admin/payments',
+      { params: { page: params.page ?? 0, size: params.size ?? 20, status: params.status || undefined } }
+    ).then(unwrap),
+
+  cancelAdminPayment: (id: number, reason?: string) =>
+    api.post(`/admin/payments/${id}/cancel`, null, { params: { reason } }),
+
+  // ── 신고 관리 ────────────────────────────────────────
+  getReports: (params: { status?: string; targetType?: string; page?: number; size?: number }) =>
+    api.get<{ success: boolean; data: AdminPage<AdminReportResponse>; message: string }>(
+      '/admin/reports',
+      { params: { page: params.page ?? 0, size: params.size ?? 20, status: params.status || undefined, targetType: params.targetType || undefined } }
+    ).then(unwrap),
+
+  processReport: (id: number, action: string, processNote?: string) =>
+    api.patch<{ success: boolean; data: AdminReportResponse; message: string }>(
+      `/admin/reports/${id}/process`, { action, processNote }
+    ).then(unwrap),
+
+  // ── 회원 제재 ────────────────────────────────────────
+  warnMember: (id: string) =>
+    api.post<{ success: boolean; data: AdminMemberResponse; message: string }>(
+      `/admin/members/${id}/warn`
+    ).then(unwrap),
+
+  suspendMember: (id: string, suspendedUntil: string) =>
+    api.post<{ success: boolean; data: AdminMemberResponse; message: string }>(
+      `/admin/members/${id}/suspend`, { suspendedUntil }
+    ).then(unwrap),
+
+  unsuspendMember: (id: string) =>
+    api.delete<{ success: boolean; data: AdminMemberResponse; message: string }>(
+      `/admin/members/${id}/suspend`
+    ).then(unwrap),
+
+  // ── 통계 ──────────────────────────────────────────
+  getSellerStats: (from: string, to: string) =>
+    api.get<{ success: boolean; data: AdminSellerStatsResponse[]; message: string }>(
+      '/admin/statistics/sellers', { params: { from, to } }
+    ).then(unwrap),
+
+  getProductStats: (since: string, limit = 30) =>
+    api.get<{ success: boolean; data: AdminProductStatsResponse[]; message: string }>(
+      '/admin/statistics/products', { params: { since, limit } }
+    ).then(unwrap),
+
+  // ── 감사 로그 ──────────────────────────────────────
+  getAuditLogs: (params: { action?: string; targetType?: string; from?: string; to?: string; page?: number; size?: number }) =>
+    api.get<{ success: boolean; data: AdminPage<AuditLogResponse>; message: string }>(
+      '/admin/audit-logs',
+      { params: { page: params.page ?? 0, size: params.size ?? 30, action: params.action || undefined, targetType: params.targetType || undefined, from: params.from || undefined, to: params.to || undefined } }
+    ).then(unwrap),
+
+  cleanupAuditLogs: (before: string) =>
+    api.delete<{ success: boolean; data: { deleted: number }; message: string }>(
+      '/admin/audit-logs/cleanup', { params: { before } }
+    ).then(unwrap),
 }
