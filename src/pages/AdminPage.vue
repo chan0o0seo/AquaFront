@@ -5,11 +5,12 @@ import {
   Shield, ClipboardList, Users, Package, Gavel, MessageSquare,
   CheckCircle, XCircle, Check, X, Loader2, Percent, Banknote,
   Plus, Edit2, Trash2, Play, Search, ChevronLeft, ChevronRight,
-  Bell, Send, FlaskConical, Headphones, MessageCircle, Pin, PinOff
+  Bell, Send, FlaskConical, Headphones, MessageCircle, Pin, PinOff,
+  LayoutDashboard, ShoppingCart, Flag, AlertTriangle, BarChart2, ScrollText
 } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { sellerApi, settlementApi, adminApi, type SellerApplicationResponse, type CommissionPolicyResponse, type CommissionPolicyRequest, type AdminMemberResponse, type MemberRole, type AdminProductResponse, type AdminProductStatus, type AdminAuctionResponse, type AdminAuctionStatus, type AdminPostResponse, type AdminInquiryResponse } from '@/api'
+import { sellerApi, settlementApi, adminApi, type SellerApplicationResponse, type CommissionPolicyResponse, type CommissionPolicyRequest, type AdminMemberResponse, type MemberRole, type AdminProductResponse, type AdminProductStatus, type AdminAuctionResponse, type AdminAuctionStatus, type AdminPostResponse, type AdminInquiryResponse, type AdminDashboardResponse, type AdminOrderResponse, type AdminOrderStatus, type AdminPaymentResponse, type AdminPaymentStatus, type AdminReportResponse, type AdminReportStatus, type ReportTargetType, type AdminSellerStatsResponse, type AdminProductStatsResponse, type AuditLogResponse, type AuditAction, type AuditTargetType } from '@/api'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -616,31 +617,430 @@ async function confirmReply() {
   }
 }
 
+// ── 대시보드 ─────────────────────────────────────
+const dashboard = ref<AdminDashboardResponse | null>(null)
+const isLoadingDashboard = ref(false)
+const dashboardError = ref('')
+
+async function fetchDashboard() {
+  isLoadingDashboard.value = true
+  dashboardError.value = ''
+  try {
+    dashboard.value = await adminApi.getDashboard()
+  } catch (e: any) {
+    dashboardError.value = e?.response?.data?.message ?? '대시보드 데이터를 불러오지 못했습니다.'
+  } finally {
+    isLoadingDashboard.value = false
+  }
+}
+
+function formatCurrency(amount: number) {
+  return amount.toLocaleString('ko-KR') + '원'
+}
+
+// ── 어드민 주문/결제 관리 ─────────────────────────
+const adminOrders = ref<AdminOrderResponse[]>([])
+const isLoadingAdminOrders = ref(false)
+const adminOrdersError = ref('')
+const adminOrderStatusFilter = ref('')
+const adminOrderPage = ref(0)
+const adminOrderTotalPages = ref(0)
+const adminOrderTotalElements = ref(0)
+
+const ORDER_STATUS_LABELS: Record<AdminOrderStatus, string> = {
+  PENDING: '결제 대기', PAID: '결제 완료', SHIPPING: '배송 중',
+  DELIVERED: '배송 완료', CONFIRMED: '구매확정', CANCELLED: '취소됨',
+}
+const ORDER_STATUS_COLORS: Record<AdminOrderStatus, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-700',
+  PAID: 'bg-sky-100 text-sky-700',
+  SHIPPING: 'bg-blue-100 text-blue-700',
+  DELIVERED: 'bg-purple-100 text-purple-700',
+  CONFIRMED: 'bg-emerald-100 text-emerald-700',
+  CANCELLED: 'bg-red-100 text-red-500',
+}
+
+async function fetchAdminOrders(page = 0) {
+  isLoadingAdminOrders.value = true
+  adminOrdersError.value = ''
+  try {
+    const result = await adminApi.getAdminOrders({ status: adminOrderStatusFilter.value, page, size: PAGE_SIZE })
+    adminOrders.value = result.content
+    adminOrderPage.value = result.number
+    adminOrderTotalPages.value = result.totalPages
+    adminOrderTotalElements.value = result.totalElements
+  } catch (e: any) {
+    adminOrdersError.value = e?.response?.data?.message ?? '주문 목록을 불러오지 못했습니다.'
+  } finally {
+    isLoadingAdminOrders.value = false
+  }
+}
+
+const showOrderStatusModal = ref(false)
+const selectedOrder = ref<AdminOrderResponse | null>(null)
+const newOrderStatus = ref<AdminOrderStatus>('PAID')
+const isUpdatingOrderStatus = ref(false)
+
+function openOrderStatusModal(order: AdminOrderResponse) {
+  selectedOrder.value = order
+  newOrderStatus.value = order.status
+  showOrderStatusModal.value = true
+}
+
+async function confirmOrderStatusUpdate() {
+  if (!selectedOrder.value || isUpdatingOrderStatus.value) return
+  isUpdatingOrderStatus.value = true
+  try {
+    const updated = await adminApi.updateAdminOrderStatus(selectedOrder.value.orderId, newOrderStatus.value)
+    const idx = adminOrders.value.findIndex(o => o.orderId === selectedOrder.value!.orderId)
+    if (idx !== -1) adminOrders.value[idx] = updated
+    showOrderStatusModal.value = false
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '상태 변경에 실패했습니다.')
+  } finally {
+    isUpdatingOrderStatus.value = false
+  }
+}
+
+// 결제 내역
+const adminPayments = ref<AdminPaymentResponse[]>([])
+const isLoadingAdminPayments = ref(false)
+const adminPaymentsError = ref('')
+const adminPaymentStatusFilter = ref('')
+const adminPaymentPage = ref(0)
+const adminPaymentTotalPages = ref(0)
+const adminPaymentTotalElements = ref(0)
+const showPaymentsView = ref(false) // false=주문, true=결제
+
+const PAYMENT_STATUS_LABELS: Record<AdminPaymentStatus, string> = {
+  PAID: '결제 완료', CANCELLED: '환불됨',
+}
+const PAYMENT_STATUS_COLORS: Record<AdminPaymentStatus, string> = {
+  PAID: 'bg-emerald-100 text-emerald-700',
+  CANCELLED: 'bg-red-100 text-red-500',
+}
+
+async function fetchAdminPayments(page = 0) {
+  isLoadingAdminPayments.value = true
+  adminPaymentsError.value = ''
+  try {
+    const result = await adminApi.getAdminPayments({ status: adminPaymentStatusFilter.value, page, size: PAGE_SIZE })
+    adminPayments.value = result.content
+    adminPaymentPage.value = result.number
+    adminPaymentTotalPages.value = result.totalPages
+    adminPaymentTotalElements.value = result.totalElements
+  } catch (e: any) {
+    adminPaymentsError.value = e?.response?.data?.message ?? '결제 내역을 불러오지 못했습니다.'
+  } finally {
+    isLoadingAdminPayments.value = false
+  }
+}
+
+const showCancelPaymentModal = ref(false)
+const paymentToCancel = ref<AdminPaymentResponse | null>(null)
+const cancelReason = ref('')
+const isCancellingPayment = ref(false)
+
+function openCancelPaymentModal(payment: AdminPaymentResponse) {
+  paymentToCancel.value = payment
+  cancelReason.value = ''
+  showCancelPaymentModal.value = true
+}
+
+async function confirmCancelPayment() {
+  if (!paymentToCancel.value || isCancellingPayment.value) return
+  isCancellingPayment.value = true
+  try {
+    await adminApi.cancelAdminPayment(paymentToCancel.value.id, cancelReason.value || undefined)
+    const idx = adminPayments.value.findIndex(p => p.id === paymentToCancel.value!.id)
+    if (idx !== -1) adminPayments.value[idx] = { ...adminPayments.value[idx], status: 'CANCELLED' }
+    showCancelPaymentModal.value = false
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '환불 처리에 실패했습니다.')
+  } finally {
+    isCancellingPayment.value = false
+  }
+}
+
+// ── 신고/제재 관리 ─────────────────────────────────
+const reports = ref<AdminReportResponse[]>([])
+const isLoadingReports = ref(false)
+const reportsError = ref('')
+const reportStatusFilter = ref('')
+const reportTargetTypeFilter = ref('')
+const reportPage = ref(0)
+const reportTotalPages = ref(0)
+const reportTotalElements = ref(0)
+
+const REPORT_STATUS_LABELS: Record<AdminReportStatus, string> = {
+  PENDING: '처리 대기', PROCESSED: '처리 완료', DISMISSED: '기각',
+}
+const REPORT_STATUS_COLORS: Record<AdminReportStatus, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-700',
+  PROCESSED: 'bg-emerald-100 text-emerald-700',
+  DISMISSED: 'bg-slate-100 text-slate-500',
+}
+const REPORT_TARGET_LABELS: Record<ReportTargetType, string> = {
+  MEMBER: '유저', PRODUCT: '상품', POST: '게시글', COMMENT: '댓글',
+}
+
+async function fetchReports(page = 0) {
+  isLoadingReports.value = true
+  reportsError.value = ''
+  try {
+    const result = await adminApi.getReports({
+      status: reportStatusFilter.value,
+      targetType: reportTargetTypeFilter.value,
+      page,
+      size: PAGE_SIZE,
+    })
+    reports.value = result.content
+    reportPage.value = result.number
+    reportTotalPages.value = result.totalPages
+    reportTotalElements.value = result.totalElements
+  } catch (e: any) {
+    reportsError.value = e?.response?.data?.message ?? '신고 목록을 불러오지 못했습니다.'
+  } finally {
+    isLoadingReports.value = false
+  }
+}
+
+const showProcessReportModal = ref(false)
+const selectedReport = ref<AdminReportResponse | null>(null)
+const reportProcessAction = ref<'PROCESSED' | 'DISMISSED'>('PROCESSED')
+const reportProcessNote = ref('')
+const isProcessingReport = ref(false)
+
+function openProcessReportModal(report: AdminReportResponse) {
+  selectedReport.value = report
+  reportProcessAction.value = 'PROCESSED'
+  reportProcessNote.value = ''
+  showProcessReportModal.value = true
+}
+
+async function confirmProcessReport() {
+  if (!selectedReport.value || isProcessingReport.value) return
+  isProcessingReport.value = true
+  try {
+    const updated = await adminApi.processReport(
+      selectedReport.value.id,
+      reportProcessAction.value,
+      reportProcessNote.value || undefined
+    )
+    const idx = reports.value.findIndex(r => r.id === selectedReport.value!.id)
+    if (idx !== -1) reports.value[idx] = updated
+    showProcessReportModal.value = false
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '처리에 실패했습니다.')
+  } finally {
+    isProcessingReport.value = false
+  }
+}
+
+// 회원 제재 모달
+const showSuspendModal = ref(false)
+const memberToSanction = ref<AdminMemberResponse | null>(null)
+const suspendUntil = ref('')
+const isSuspending = ref(false)
+
+function openSuspendModal(member: AdminMemberResponse) {
+  memberToSanction.value = member
+  suspendUntil.value = ''
+  showSuspendModal.value = true
+}
+
+async function confirmSuspend() {
+  if (!memberToSanction.value || !suspendUntil.value || isSuspending.value) return
+  isSuspending.value = true
+  try {
+    const updated = await adminApi.suspendMember(memberToSanction.value.id, new Date(suspendUntil.value).toISOString())
+    const idx = members.value.findIndex(m => m.id === memberToSanction.value!.id)
+    if (idx !== -1) members.value[idx] = updated
+    showSuspendModal.value = false
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '정지 처리에 실패했습니다.')
+  } finally {
+    isSuspending.value = false
+  }
+}
+
+async function handleWarnMember(member: AdminMemberResponse) {
+  if (!confirm(`${member.nickName} 님에게 경고를 부여하시겠습니까?`)) return
+  try {
+    const updated = await adminApi.warnMember(member.id)
+    const idx = members.value.findIndex(m => m.id === member.id)
+    if (idx !== -1) members.value[idx] = updated
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '경고 처리에 실패했습니다.')
+  }
+}
+
+async function handleUnsuspend(member: AdminMemberResponse) {
+  if (!confirm(`${member.nickName} 님의 정지를 해제하시겠습니까?`)) return
+  try {
+    const updated = await adminApi.unsuspendMember(member.id)
+    const idx = members.value.findIndex(m => m.id === member.id)
+    if (idx !== -1) members.value[idx] = updated
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '정지 해제에 실패했습니다.')
+  }
+}
+
+// ── 통계/리포트 ───────────────────────────────────
+const sellerStats = ref<AdminSellerStatsResponse[]>([])
+const isLoadingSellerStats = ref(false)
+const sellerStatsError = ref('')
+const statsFromDate = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
+const statsToDate = ref(new Date().toISOString().slice(0, 10))
+
+async function fetchSellerStats() {
+  isLoadingSellerStats.value = true
+  sellerStatsError.value = ''
+  try {
+    sellerStats.value = await adminApi.getSellerStats(statsFromDate.value, statsToDate.value)
+  } catch (e: any) {
+    sellerStatsError.value = e?.response?.data?.message ?? '판매자 통계를 불러오지 못했습니다.'
+  } finally {
+    isLoadingSellerStats.value = false
+  }
+}
+
+const productStats = ref<AdminProductStatsResponse[]>([])
+const isLoadingProductStats = ref(false)
+const productStatsError = ref('')
+const productStatsDays = ref(30)
+
+async function fetchProductStats() {
+  isLoadingProductStats.value = true
+  productStatsError.value = ''
+  try {
+    const since = new Date(Date.now() - productStatsDays.value * 86400000).toISOString()
+    productStats.value = await adminApi.getProductStats(since, 50)
+  } catch (e: any) {
+    productStatsError.value = e?.response?.data?.message ?? '상품 통계를 불러오지 못했습니다.'
+  } finally {
+    isLoadingProductStats.value = false
+  }
+}
+
+// ── 감사 로그 ─────────────────────────────────────
+const auditLogs = ref<AuditLogResponse[]>([])
+const isLoadingAuditLogs = ref(false)
+const auditLogsError = ref('')
+const auditActionFilter = ref('')
+const auditTargetTypeFilter = ref('')
+const auditFromDate = ref(new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
+const auditToDate = ref(new Date().toISOString().slice(0, 10))
+const auditPage = ref(0)
+const auditTotalPages = ref(0)
+const auditTotalElements = ref(0)
+const auditCleanupDate = ref('')
+const isCleaningUp = ref(false)
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  MEMBER_WARN: '회원 경고',
+  MEMBER_SUSPEND: '회원 정지',
+  MEMBER_UNSUSPEND: '정지 해제',
+  MEMBER_ROLE_CHANGE: '역할 변경',
+  MEMBER_DELETE: '회원 삭제',
+  POLICY_CREATE: '정책 생성',
+  POLICY_UPDATE: '정책 수정',
+  POLICY_DELETE: '정책 삭제',
+  SETTLEMENT_COMPLETE: '정산 완료',
+  SETTLEMENT_FAIL: '정산 실패',
+  ORDER_STATUS_CHANGE: '주문 상태 변경',
+  ORDER_CANCEL: '주문 취소',
+  REPORT_PROCESS: '신고 처리',
+}
+const AUDIT_ACTION_COLORS: Record<string, string> = {
+  MEMBER_WARN: 'bg-yellow-100 text-yellow-700',
+  MEMBER_SUSPEND: 'bg-red-100 text-red-600',
+  MEMBER_UNSUSPEND: 'bg-emerald-100 text-emerald-700',
+  MEMBER_ROLE_CHANGE: 'bg-sky-100 text-sky-700',
+  MEMBER_DELETE: 'bg-red-100 text-red-700',
+  POLICY_CREATE: 'bg-purple-100 text-purple-700',
+  POLICY_UPDATE: 'bg-purple-100 text-purple-600',
+  POLICY_DELETE: 'bg-red-100 text-red-500',
+  SETTLEMENT_COMPLETE: 'bg-emerald-100 text-emerald-700',
+  SETTLEMENT_FAIL: 'bg-red-100 text-red-500',
+  ORDER_STATUS_CHANGE: 'bg-blue-100 text-blue-700',
+  ORDER_CANCEL: 'bg-slate-100 text-slate-600',
+  REPORT_PROCESS: 'bg-orange-100 text-orange-700',
+}
+
+async function fetchAuditLogs(page = 0) {
+  isLoadingAuditLogs.value = true
+  auditLogsError.value = ''
+  try {
+    const result = await adminApi.getAuditLogs({
+      action: auditActionFilter.value,
+      targetType: auditTargetTypeFilter.value,
+      from: auditFromDate.value,
+      to: auditToDate.value,
+      page,
+      size: PAGE_SIZE,
+    })
+    auditLogs.value = result.content
+    auditPage.value = result.number
+    auditTotalPages.value = result.totalPages
+    auditTotalElements.value = result.totalElements
+  } catch (e: any) {
+    auditLogsError.value = e?.response?.data?.message ?? '감사 로그를 불러오지 못했습니다.'
+  } finally {
+    isLoadingAuditLogs.value = false
+  }
+}
+
+async function handleAuditCleanup() {
+  if (!auditCleanupDate.value) return
+  if (!confirm(`${auditCleanupDate.value} 이전 감사 로그를 모두 삭제하시겠습니까?`)) return
+  isCleaningUp.value = true
+  try {
+    const result = await adminApi.cleanupAuditLogs(auditCleanupDate.value)
+    alert(`${result.deleted}건 삭제 완료`)
+    fetchAuditLogs(0)
+  } catch (e: any) {
+    alert(e?.response?.data?.message ?? '삭제에 실패했습니다.')
+  } finally {
+    isCleaningUp.value = false
+  }
+}
+
 // ── 공통 ─────────────────────────────────────────
 const navItems = [
-  { key: 'applications', icon: ClipboardList, label: '판매자 신청 관리' },
-  { key: 'commission',   icon: Percent,       label: '수수료 정책' },
-  { key: 'settlements',  icon: Banknote,      label: '정산 처리' },
-  { key: 'members',      icon: Users,         label: '회원 관리' },
-  { key: 'products',     icon: Package,       label: '상품 관리' },
-  { key: 'auctions',     icon: Gavel,         label: '경매 관리' },
-  { key: 'community',    icon: MessageSquare, label: '커뮤니티 관리' },
-  { key: 'inquiries',    icon: Headphones,    label: '고객센터 문의' },
-  { key: 'push',         icon: Bell,          label: '마케팅 푸시' },
+  { key: 'dashboard',    icon: LayoutDashboard, label: '대시보드' },
+  { key: 'applications', icon: ClipboardList,   label: '판매자 신청 관리' },
+  { key: 'commission',   icon: Percent,         label: '수수료 정책' },
+  { key: 'settlements',  icon: Banknote,        label: '정산 처리' },
+  { key: 'members',      icon: Users,           label: '회원 관리' },
+  { key: 'products',     icon: Package,         label: '상품 관리' },
+  { key: 'auctions',     icon: Gavel,           label: '경매 관리' },
+  { key: 'orders',       icon: ShoppingCart,    label: '주문/결제 관리' },
+  { key: 'reports',      icon: Flag,            label: '신고/제재 관리' },
+  { key: 'statistics',   icon: BarChart2,       label: '통계/리포트' },
+  { key: 'auditlogs',    icon: ScrollText,      label: '감사 로그' },
+  { key: 'community',    icon: MessageSquare,   label: '커뮤니티 관리' },
+  { key: 'inquiries',    icon: Headphones,      label: '고객센터 문의' },
+  { key: 'push',         icon: Bell,            label: '마케팅 푸시' },
 ]
 
 
 function handleTabChange(key: string) {
   activeTab.value = key
+  if (key === 'dashboard' && !dashboard.value) fetchDashboard()
   if (key === 'commission' && policies.value.length === 0) fetchPolicies()
   if (key === 'members' && members.value.length === 0) fetchMembers(0)
   if (key === 'products' && products.value.length === 0) fetchProducts(0)
   if (key === 'auctions' && auctions.value.length === 0) fetchAuctions(0)
+  if (key === 'orders' && adminOrders.value.length === 0) { fetchAdminOrders(0); fetchAdminPayments(0) }
+  if (key === 'reports' && reports.value.length === 0) fetchReports(0)
+  if (key === 'statistics' && sellerStats.value.length === 0) { fetchSellerStats(); fetchProductStats() }
+  if (key === 'auditlogs' && auditLogs.value.length === 0) fetchAuditLogs(0)
   if (key === 'community' && posts.value.length === 0) fetchPosts(0)
   if (key === 'inquiries' && inquiries.value.length === 0) fetchInquiries(0)
 }
 
-onMounted(fetchApplications)
+onMounted(() => { fetchApplications(); fetchDashboard() })
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -921,6 +1321,8 @@ function formatDate(dateStr: string) {
                           class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
                           :class="ROLE_COLORS[member.role]"
                         >{{ ROLE_LABELS[member.role] }}</span>
+                        <span v-if="member.suspended" class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600">정지</span>
+                        <span v-if="member.warningCount > 0" class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-600">경고{{ member.warningCount }}</span>
                       </td>
                       <td class="px-4 py-3 text-slate-400 text-xs">{{ formatDate(member.createdAt) }}</td>
                       <td class="px-4 py-3 text-right">
@@ -931,6 +1333,27 @@ function formatDate(dateStr: string) {
                             title="역할 변경"
                           >
                             <Edit2 class="w-4 h-4" />
+                          </button>
+                          <button
+                            @click="handleWarnMember(member)"
+                            class="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition"
+                            title="경고"
+                          >
+                            <AlertTriangle class="w-4 h-4" />
+                          </button>
+                          <button v-if="!member.suspended"
+                            @click="openSuspendModal(member)"
+                            class="p-1.5 rounded-lg text-slate-400 hover:text-orange-500 hover:bg-orange-50 transition"
+                            title="정지"
+                          >
+                            <XCircle class="w-4 h-4" />
+                          </button>
+                          <button v-else
+                            @click="handleUnsuspend(member)"
+                            class="p-1.5 rounded-lg text-orange-500 hover:text-slate-400 hover:bg-slate-50 transition"
+                            title="정지 해제"
+                          >
+                            <CheckCircle class="w-4 h-4" />
                           </button>
                           <button
                             @click="openDeleteMemberModal(member)"
@@ -1429,6 +1852,479 @@ function formatDate(dateStr: string) {
             </div>
           </div>
 
+          <!-- ── 대시보드 탭 ── -->
+          <div v-else-if="activeTab === 'dashboard'">
+            <div class="flex items-center justify-between mb-6">
+              <h1 class="text-2xl font-black text-slate-900">대시보드</h1>
+              <button @click="fetchDashboard" class="px-4 py-2 bg-sky-50 hover:bg-sky-100 text-sky-600 text-sm font-semibold rounded-xl transition">새로고침</button>
+            </div>
+            <div v-if="isLoadingDashboard" class="flex justify-center py-24"><Loader2 class="w-8 h-8 animate-spin text-sky-400" /></div>
+            <div v-else-if="dashboardError" class="text-center py-24 text-red-500 text-sm">{{ dashboardError }}</div>
+            <div v-else-if="dashboard">
+              <!-- 핵심 지표 -->
+              <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-white border border-sky-100 rounded-2xl p-5">
+                  <div class="text-xs text-slate-400 mb-1">오늘 매출</div>
+                  <div class="text-2xl font-black text-slate-900">{{ formatCurrency(dashboard.todayRevenue) }}</div>
+                  <div class="text-xs text-slate-400 mt-1">이번 달 {{ formatCurrency(dashboard.thisMonthRevenue) }}</div>
+                </div>
+                <div class="bg-white border border-sky-100 rounded-2xl p-5">
+                  <div class="text-xs text-slate-400 mb-1">오늘 주문</div>
+                  <div class="text-2xl font-black text-slate-900">{{ dashboard.todayOrderCount.toLocaleString() }}건</div>
+                  <div class="text-xs text-slate-400 mt-1">이번 달 {{ dashboard.thisMonthOrderCount.toLocaleString() }}건</div>
+                </div>
+                <div class="bg-white border border-sky-100 rounded-2xl p-5">
+                  <div class="text-xs text-slate-400 mb-1">오늘 신규 가입</div>
+                  <div class="text-2xl font-black text-slate-900">{{ dashboard.todayNewMembers.toLocaleString() }}명</div>
+                  <div class="text-xs text-slate-400 mt-1">이번 달 {{ dashboard.thisMonthNewMembers.toLocaleString() }}명</div>
+                </div>
+                <div class="bg-white border border-sky-100 rounded-2xl p-5">
+                  <div class="text-xs text-slate-400 mb-1">경매 진행 현황</div>
+                  <div class="text-2xl font-black text-emerald-600">{{ dashboard.activeAuctions }}건 진행중</div>
+                  <div class="text-xs text-slate-400 mt-1">예정 {{ dashboard.scheduledAuctions }}건</div>
+                </div>
+              </div>
+              <!-- 취소율/환불율 -->
+              <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+                  <div class="text-xs text-amber-600 mb-1 font-semibold">최근 30일 취소율</div>
+                  <div class="text-3xl font-black text-amber-700">{{ dashboard.cancelRate }}%</div>
+                  <div class="text-xs text-slate-400 mt-1">취소 {{ dashboard.thisMonthCancelCount.toLocaleString() }}건</div>
+                </div>
+                <div class="bg-red-50 border border-red-100 rounded-2xl p-5">
+                  <div class="text-xs text-red-600 mb-1 font-semibold">최근 30일 환불율</div>
+                  <div class="text-3xl font-black text-red-700">{{ dashboard.refundRate }}%</div>
+                  <div class="text-xs text-slate-400 mt-1">환불 {{ dashboard.thisMonthRefundCount.toLocaleString() }}건</div>
+                </div>
+              </div>
+              <!-- 인기 상품/카테고리 -->
+              <div class="grid grid-cols-2 gap-4">
+                <div class="bg-white border border-sky-100 rounded-2xl p-5">
+                  <div class="font-bold text-slate-800 mb-3 text-sm">인기 상품 Top 5 <span class="text-xs text-slate-400 font-normal">(최근 30일)</span></div>
+                  <div v-if="dashboard.popularProducts.length === 0" class="text-xs text-slate-400 text-center py-4">데이터가 없습니다</div>
+                  <ol v-else class="space-y-2">
+                    <li v-for="(p, i) in dashboard.popularProducts" :key="p.productId" class="flex items-center gap-2 text-sm">
+                      <span class="w-5 h-5 rounded-full bg-sky-100 text-sky-600 text-xs font-bold flex items-center justify-center flex-shrink-0">{{ i + 1 }}</span>
+                      <span class="flex-1 truncate text-slate-700">{{ p.name }}</span>
+                      <span class="text-slate-400 text-xs">{{ p.soldCount }}개</span>
+                    </li>
+                  </ol>
+                </div>
+                <div class="bg-white border border-sky-100 rounded-2xl p-5">
+                  <div class="font-bold text-slate-800 mb-3 text-sm">인기 카테고리 Top 5 <span class="text-xs text-slate-400 font-normal">(최근 30일)</span></div>
+                  <div v-if="dashboard.popularCategories.length === 0" class="text-xs text-slate-400 text-center py-4">데이터가 없습니다</div>
+                  <ol v-else class="space-y-2">
+                    <li v-for="(c, i) in dashboard.popularCategories" :key="c.categoryName" class="flex items-center gap-2 text-sm">
+                      <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold flex items-center justify-center flex-shrink-0">{{ i + 1 }}</span>
+                      <span class="flex-1 truncate text-slate-700">{{ c.categoryName }}</span>
+                      <span class="text-slate-400 text-xs">{{ c.soldCount }}개</span>
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── 주문/결제 관리 탭 ── -->
+          <div v-else-if="activeTab === 'orders'">
+            <div class="flex items-center justify-between mb-6">
+              <h1 class="text-2xl font-black text-slate-900">주문/결제 관리</h1>
+              <div class="flex gap-2">
+                <button @click="showPaymentsView = false; if(!showPaymentsView && adminOrders.length === 0) fetchAdminOrders(0)"
+                  :class="!showPaymentsView ? 'bg-sky-500 text-white' : 'bg-sky-50 text-sky-600'"
+                  class="px-4 py-2 text-sm font-semibold rounded-xl transition">주문 목록</button>
+                <button @click="showPaymentsView = true; if(showPaymentsView && adminPayments.length === 0) fetchAdminPayments(0)"
+                  :class="showPaymentsView ? 'bg-sky-500 text-white' : 'bg-sky-50 text-sky-600'"
+                  class="px-4 py-2 text-sm font-semibold rounded-xl transition">결제 내역</button>
+              </div>
+            </div>
+
+            <!-- 주문 목록 -->
+            <template v-if="!showPaymentsView">
+              <div class="flex gap-3 mb-5">
+                <select v-model="adminOrderStatusFilter" @change="fetchAdminOrders(0)"
+                  class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                  <option value="">전체 상태</option>
+                  <option v-for="(label, key) in ORDER_STATUS_LABELS" :key="key" :value="key">{{ label }}</option>
+                </select>
+                <span class="ml-auto text-sm text-slate-400 self-center">총 {{ adminOrderTotalElements.toLocaleString() }}건</span>
+              </div>
+              <div v-if="isLoadingAdminOrders" class="flex justify-center py-24"><Loader2 class="w-8 h-8 animate-spin text-sky-400" /></div>
+              <div v-else-if="adminOrdersError" class="text-center py-24 text-red-500 text-sm">{{ adminOrdersError }}</div>
+              <div v-else-if="adminOrders.length === 0" class="text-center py-24">
+                <ShoppingCart class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                <p class="text-slate-400 text-sm">주문 내역이 없습니다</p>
+              </div>
+              <div v-else class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-sky-100 text-left text-xs text-slate-400">
+                      <th class="px-4 py-3">주문번호</th>
+                      <th class="px-4 py-3">구매자</th>
+                      <th class="px-4 py-3">금액</th>
+                      <th class="px-4 py-3">상태</th>
+                      <th class="px-4 py-3">주문일</th>
+                      <th class="px-4 py-3 text-right">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="order in adminOrders" :key="order.orderId" class="border-b border-sky-50 hover:bg-sky-50/30 transition">
+                      <td class="px-4 py-3 font-mono text-slate-600">#{{ order.orderId }}</td>
+                      <td class="px-4 py-3">
+                        <div class="font-semibold text-slate-800">{{ order.buyerNickName }}</div>
+                        <div class="text-xs text-slate-400">{{ order.buyerEmail }}</div>
+                      </td>
+                      <td class="px-4 py-3 font-semibold text-slate-800">{{ formatCurrency(order.totalAmount + order.shippingFee) }}</td>
+                      <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="ORDER_STATUS_COLORS[order.status]">
+                          {{ ORDER_STATUS_LABELS[order.status] }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-slate-400 text-xs">{{ formatDate(order.createdAt) }}</td>
+                      <td class="px-4 py-3 text-right">
+                        <button @click="openOrderStatusModal(order)"
+                          class="p-1.5 rounded-lg text-slate-400 hover:text-sky-500 hover:bg-sky-50 transition" title="상태 변경">
+                          <Edit2 class="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-if="adminOrderTotalPages > 1" class="flex items-center justify-center gap-2 mt-5">
+                <button @click="fetchAdminOrders(adminOrderPage - 1)" :disabled="adminOrderPage === 0" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronLeft class="w-4 h-4" /></button>
+                <span class="text-sm text-slate-500 px-2">{{ adminOrderPage + 1 }} / {{ adminOrderTotalPages }}</span>
+                <button @click="fetchAdminOrders(adminOrderPage + 1)" :disabled="adminOrderPage >= adminOrderTotalPages - 1" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronRight class="w-4 h-4" /></button>
+              </div>
+            </template>
+
+            <!-- 결제 내역 -->
+            <template v-else>
+              <div class="flex gap-3 mb-5">
+                <select v-model="adminPaymentStatusFilter" @change="fetchAdminPayments(0)"
+                  class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                  <option value="">전체 상태</option>
+                  <option v-for="(label, key) in PAYMENT_STATUS_LABELS" :key="key" :value="key">{{ label }}</option>
+                </select>
+                <span class="ml-auto text-sm text-slate-400 self-center">총 {{ adminPaymentTotalElements.toLocaleString() }}건</span>
+              </div>
+              <div v-if="isLoadingAdminPayments" class="flex justify-center py-24"><Loader2 class="w-8 h-8 animate-spin text-sky-400" /></div>
+              <div v-else-if="adminPaymentsError" class="text-center py-24 text-red-500 text-sm">{{ adminPaymentsError }}</div>
+              <div v-else-if="adminPayments.length === 0" class="text-center py-24">
+                <Banknote class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                <p class="text-slate-400 text-sm">결제 내역이 없습니다</p>
+              </div>
+              <div v-else class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-sky-100 text-left text-xs text-slate-400">
+                      <th class="px-4 py-3">결제 ID</th>
+                      <th class="px-4 py-3">구매자</th>
+                      <th class="px-4 py-3">금액</th>
+                      <th class="px-4 py-3">결제수단</th>
+                      <th class="px-4 py-3">상태</th>
+                      <th class="px-4 py-3">결제일</th>
+                      <th class="px-4 py-3 text-right">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="pay in adminPayments" :key="pay.id" class="border-b border-sky-50 hover:bg-sky-50/30 transition">
+                      <td class="px-4 py-3 font-mono text-xs text-slate-500 max-w-[120px] truncate">{{ pay.paymentId }}</td>
+                      <td class="px-4 py-3">
+                        <div class="font-semibold text-slate-800">{{ pay.buyerNickName }}</div>
+                        <div class="text-xs text-slate-400">{{ pay.buyerEmail }}</div>
+                      </td>
+                      <td class="px-4 py-3 font-semibold text-slate-800">{{ formatCurrency(pay.amount) }}</td>
+                      <td class="px-4 py-3 text-slate-500 text-xs">{{ pay.payMethod }} / {{ pay.pgProvider }}</td>
+                      <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="PAYMENT_STATUS_COLORS[pay.status]">
+                          {{ PAYMENT_STATUS_LABELS[pay.status] }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-slate-400 text-xs">{{ formatDate(pay.createdAt) }}</td>
+                      <td class="px-4 py-3 text-right">
+                        <button v-if="pay.status === 'PAID'" @click="openCancelPaymentModal(pay)"
+                          class="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 border border-red-100 hover:bg-red-50 transition">
+                          환불
+                        </button>
+                        <span v-else class="text-slate-200 text-xs">—</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-if="adminPaymentTotalPages > 1" class="flex items-center justify-center gap-2 mt-5">
+                <button @click="fetchAdminPayments(adminPaymentPage - 1)" :disabled="adminPaymentPage === 0" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronLeft class="w-4 h-4" /></button>
+                <span class="text-sm text-slate-500 px-2">{{ adminPaymentPage + 1 }} / {{ adminPaymentTotalPages }}</span>
+                <button @click="fetchAdminPayments(adminPaymentPage + 1)" :disabled="adminPaymentPage >= adminPaymentTotalPages - 1" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronRight class="w-4 h-4" /></button>
+              </div>
+            </template>
+          </div>
+
+          <!-- ── 신고/제재 관리 탭 ── -->
+          <div v-else-if="activeTab === 'reports'">
+            <div class="flex items-center justify-between mb-6">
+              <h1 class="text-2xl font-black text-slate-900">신고/제재 관리</h1>
+              <span class="text-sm text-slate-400">총 {{ reportTotalElements.toLocaleString() }}건</span>
+            </div>
+            <div class="flex gap-3 mb-5">
+              <select v-model="reportStatusFilter" @change="fetchReports(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 상태</option>
+                <option v-for="(label, key) in REPORT_STATUS_LABELS" :key="key" :value="key">{{ label }}</option>
+              </select>
+              <select v-model="reportTargetTypeFilter" @change="fetchReports(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 유형</option>
+                <option v-for="(label, key) in REPORT_TARGET_LABELS" :key="key" :value="key">{{ label }}</option>
+              </select>
+            </div>
+            <div v-if="isLoadingReports" class="flex justify-center py-24"><Loader2 class="w-8 h-8 animate-spin text-sky-400" /></div>
+            <div v-else-if="reportsError" class="text-center py-24 text-red-500 text-sm">{{ reportsError }}</div>
+            <div v-else-if="reports.length === 0" class="text-center py-24">
+              <Flag class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+              <p class="text-slate-400 text-sm">신고 내역이 없습니다</p>
+            </div>
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-sky-100 text-left text-xs text-slate-400">
+                    <th class="px-4 py-3">신고 유형</th>
+                    <th class="px-4 py-3">신고자</th>
+                    <th class="px-4 py-3">대상 ID</th>
+                    <th class="px-4 py-3">신고 사유</th>
+                    <th class="px-4 py-3">상태</th>
+                    <th class="px-4 py-3">신고일</th>
+                    <th class="px-4 py-3 text-right">처리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="report in reports" :key="report.id" class="border-b border-sky-50 hover:bg-sky-50/30 transition">
+                    <td class="px-4 py-3">
+                      <span class="px-2 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                        {{ REPORT_TARGET_LABELS[report.targetType] }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="font-semibold text-slate-800">{{ report.reporterNickName }}</div>
+                      <div class="text-xs text-slate-400">{{ report.reporterEmail }}</div>
+                    </td>
+                    <td class="px-4 py-3 font-mono text-slate-500">#{{ report.targetId }}</td>
+                    <td class="px-4 py-3 text-slate-600 max-w-[200px] truncate">{{ report.reason }}</td>
+                    <td class="px-4 py-3">
+                      <span class="px-2 py-1 rounded-full text-xs font-semibold" :class="REPORT_STATUS_COLORS[report.status]">
+                        {{ REPORT_STATUS_LABELS[report.status] }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-slate-400 text-xs">{{ formatDate(report.createdAt) }}</td>
+                    <td class="px-4 py-3 text-right">
+                      <button v-if="report.status === 'PENDING'" @click="openProcessReportModal(report)"
+                        class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500 hover:bg-sky-600 text-white transition">
+                        처리
+                      </button>
+                      <span v-else class="text-slate-300 text-xs">{{ report.processorNickName ?? '—' }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="reportTotalPages > 1" class="flex items-center justify-center gap-2 mt-5">
+              <button @click="fetchReports(reportPage - 1)" :disabled="reportPage === 0" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronLeft class="w-4 h-4" /></button>
+              <span class="text-sm text-slate-500 px-2">{{ reportPage + 1 }} / {{ reportTotalPages }}</span>
+              <button @click="fetchReports(reportPage + 1)" :disabled="reportPage >= reportTotalPages - 1" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronRight class="w-4 h-4" /></button>
+            </div>
+          </div>
+
+          <!-- ── 통계/리포트 탭 ── -->
+          <div v-else-if="activeTab === 'statistics'">
+            <h1 class="text-2xl font-black text-slate-900 mb-6">통계 / 리포트</h1>
+
+            <!-- 판매자별 매출 -->
+            <div class="mb-10">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-slate-800">판매자별 매출</h2>
+                <div class="flex items-center gap-2">
+                  <input type="date" v-model="statsFromDate" class="border border-sky-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white" />
+                  <span class="text-slate-400 text-sm">~</span>
+                  <input type="date" v-model="statsToDate" class="border border-sky-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white" />
+                  <button @click="fetchSellerStats" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold rounded-xl transition">조회</button>
+                </div>
+              </div>
+              <div v-if="isLoadingSellerStats" class="flex justify-center py-12"><Loader2 class="w-7 h-7 animate-spin text-sky-400" /></div>
+              <div v-else-if="sellerStatsError" class="text-center py-12 text-red-500 text-sm">{{ sellerStatsError }}</div>
+              <div v-else-if="sellerStats.length === 0" class="text-center py-12 text-slate-400 text-sm">해당 기간에 정산 데이터가 없습니다.</div>
+              <div v-else class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-sky-50 bg-slate-50 text-left text-xs text-slate-500">
+                      <th class="px-4 py-3">판매자</th>
+                      <th class="px-4 py-3 text-right">총 매출</th>
+                      <th class="px-4 py-3 text-right">수수료</th>
+                      <th class="px-4 py-3 text-right">실수령액</th>
+                      <th class="px-4 py-3 text-right">정산 건수</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-sky-50">
+                    <tr v-for="stat in sellerStats" :key="stat.sellerId" class="hover:bg-sky-50/40 transition">
+                      <td class="px-4 py-3">
+                        <div class="font-semibold text-slate-800">{{ stat.sellerNickName }}</div>
+                        <div class="text-xs text-slate-400">{{ stat.sellerEmail }}</div>
+                      </td>
+                      <td class="px-4 py-3 text-right font-semibold text-slate-800">{{ stat.totalSalesAmount.toLocaleString() }}원</td>
+                      <td class="px-4 py-3 text-right text-red-500 text-xs">{{ stat.totalCommission.toLocaleString() }}원</td>
+                      <td class="px-4 py-3 text-right font-bold text-emerald-600">{{ stat.totalNetAmount.toLocaleString() }}원</td>
+                      <td class="px-4 py-3 text-right text-slate-500">{{ stat.settlementCount }}건</td>
+                    </tr>
+                  </tbody>
+                  <tfoot class="bg-slate-50 border-t border-sky-100">
+                    <tr>
+                      <td class="px-4 py-3 font-bold text-slate-700 text-xs">합계 ({{ sellerStats.length }}명)</td>
+                      <td class="px-4 py-3 text-right font-bold text-slate-800">{{ sellerStats.reduce((s, r) => s + r.totalSalesAmount, 0).toLocaleString() }}원</td>
+                      <td class="px-4 py-3 text-right text-red-500 text-xs">{{ sellerStats.reduce((s, r) => s + r.totalCommission, 0).toLocaleString() }}원</td>
+                      <td class="px-4 py-3 text-right font-bold text-emerald-600">{{ sellerStats.reduce((s, r) => s + r.totalNetAmount, 0).toLocaleString() }}원</td>
+                      <td class="px-4 py-3 text-right text-slate-500">{{ sellerStats.reduce((s, r) => s + r.settlementCount, 0) }}건</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <!-- 상품별 성과 -->
+            <div>
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-slate-800">상품별 성과</h2>
+                <div class="flex items-center gap-2">
+                  <select v-model="productStatsDays" @change="fetchProductStats"
+                    class="border border-sky-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white">
+                    <option :value="7">최근 7일</option>
+                    <option :value="30">최근 30일</option>
+                    <option :value="90">최근 90일</option>
+                    <option :value="180">최근 180일</option>
+                  </select>
+                  <button @click="fetchProductStats" class="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold rounded-xl transition">조회</button>
+                </div>
+              </div>
+              <div v-if="isLoadingProductStats" class="flex justify-center py-12"><Loader2 class="w-7 h-7 animate-spin text-sky-400" /></div>
+              <div v-else-if="productStatsError" class="text-center py-12 text-red-500 text-sm">{{ productStatsError }}</div>
+              <div v-else-if="productStats.length === 0" class="text-center py-12 text-slate-400 text-sm">해당 기간에 주문 데이터가 없습니다.</div>
+              <div v-else class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-sky-50 bg-slate-50 text-left text-xs text-slate-500">
+                      <th class="px-4 py-3">순위</th>
+                      <th class="px-4 py-3">상품명</th>
+                      <th class="px-4 py-3">판매자</th>
+                      <th class="px-4 py-3 text-right">판매 수량</th>
+                      <th class="px-4 py-3 text-right">총 매출</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-sky-50">
+                    <tr v-for="(stat, idx) in productStats" :key="stat.productId" class="hover:bg-sky-50/40 transition">
+                      <td class="px-4 py-3 text-center">
+                        <span v-if="idx < 3" class="inline-flex w-6 h-6 items-center justify-center rounded-full text-xs font-bold"
+                          :class="idx === 0 ? 'bg-yellow-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : 'bg-amber-600 text-white'">
+                          {{ idx + 1 }}
+                        </span>
+                        <span v-else class="text-slate-400 text-xs">{{ idx + 1 }}</span>
+                      </td>
+                      <td class="px-4 py-3 font-medium text-slate-800">{{ stat.productName }}</td>
+                      <td class="px-4 py-3 text-slate-500 text-xs">{{ stat.sellerNickName }}</td>
+                      <td class="px-4 py-3 text-right font-semibold text-slate-700">{{ stat.soldCount.toLocaleString() }}개</td>
+                      <td class="px-4 py-3 text-right font-bold text-emerald-600">{{ stat.totalRevenue.toLocaleString() }}원</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── 감사 로그 탭 ── -->
+          <div v-else-if="activeTab === 'auditlogs'">
+            <div class="flex items-center justify-between mb-6">
+              <h1 class="text-2xl font-black text-slate-900">감사 로그</h1>
+              <span class="text-sm text-slate-400">총 {{ auditTotalElements.toLocaleString() }}건</span>
+            </div>
+
+            <!-- 필터 -->
+            <div class="flex flex-wrap gap-3 mb-5">
+              <select v-model="auditActionFilter" @change="fetchAuditLogs(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 액션</option>
+                <option v-for="(label, key) in AUDIT_ACTION_LABELS" :key="key" :value="key">{{ label }}</option>
+              </select>
+              <select v-model="auditTargetTypeFilter" @change="fetchAuditLogs(0)"
+                class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-slate-600">
+                <option value="">전체 대상</option>
+                <option value="MEMBER">회원</option>
+                <option value="COMMISSION_POLICY">수수료 정책</option>
+                <option value="SETTLEMENT">정산</option>
+                <option value="ORDER">주문</option>
+                <option value="REPORT">신고</option>
+              </select>
+              <div class="flex items-center gap-2">
+                <input type="date" v-model="auditFromDate"
+                  class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white" />
+                <span class="text-slate-400 text-sm">~</span>
+                <input type="date" v-model="auditToDate"
+                  class="border border-sky-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white" />
+                <button @click="fetchAuditLogs(0)" class="px-4 py-2.5 bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold rounded-xl transition">조회</button>
+              </div>
+            </div>
+
+            <!-- 수동 정리 -->
+            <div class="bg-red-50 border border-red-100 rounded-2xl p-4 mb-5 flex items-center gap-3">
+              <span class="text-xs text-slate-500 font-medium whitespace-nowrap">오래된 로그 삭제</span>
+              <input type="date" v-model="auditCleanupDate"
+                class="border border-red-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 bg-white" />
+              <span class="text-xs text-slate-400">이전 로그 전체 삭제</span>
+              <button @click="handleAuditCleanup" :disabled="!auditCleanupDate || isCleaningUp"
+                class="px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition disabled:opacity-40">
+                {{ isCleaningUp ? '삭제 중...' : '삭제' }}
+              </button>
+              <span class="text-xs text-slate-400 ml-auto">자동 정리: 매일 자정 90일 이전 로그 삭제</span>
+            </div>
+            <div v-if="isLoadingAuditLogs" class="flex justify-center py-24"><Loader2 class="w-8 h-8 animate-spin text-sky-400" /></div>
+            <div v-else-if="auditLogsError" class="text-center py-24 text-red-500 text-sm">{{ auditLogsError }}</div>
+            <div v-else-if="auditLogs.length === 0" class="text-center py-24">
+              <ScrollText class="w-12 h-12 text-slate-200 mx-auto mb-3" />
+              <p class="text-slate-400 text-sm">해당 기간에 감사 로그가 없습니다</p>
+            </div>
+            <div v-else class="bg-white rounded-2xl border border-sky-100 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-sky-50 bg-slate-50 text-left text-xs text-slate-500">
+                    <th class="px-4 py-3">일시</th>
+                    <th class="px-4 py-3">수행자</th>
+                    <th class="px-4 py-3">액션</th>
+                    <th class="px-4 py-3">대상</th>
+                    <th class="px-4 py-3">상세</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-sky-50">
+                  <tr v-for="log in auditLogs" :key="log.id" class="hover:bg-sky-50/40 transition">
+                    <td class="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{{ formatDate(log.createdAt) }}</td>
+                    <td class="px-4 py-3 text-slate-600 text-xs">{{ log.actorEmail }}</td>
+                    <td class="px-4 py-3">
+                      <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold" :class="AUDIT_ACTION_COLORS[log.action] ?? 'bg-slate-100 text-slate-600'">
+                        {{ AUDIT_ACTION_LABELS[log.action] ?? log.action }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-slate-500 text-xs">
+                      <span class="font-medium">{{ log.targetType }}</span>
+                      <span v-if="log.targetId" class="text-slate-400"> #{{ log.targetId }}</span>
+                    </td>
+                    <td class="px-4 py-3 text-slate-600 text-xs max-w-[240px] truncate">{{ log.detail ?? '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="auditTotalPages > 1" class="flex items-center justify-center gap-2 mt-5">
+              <button @click="fetchAuditLogs(auditPage - 1)" :disabled="auditPage === 0" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronLeft class="w-4 h-4" /></button>
+              <span class="text-sm text-slate-500 px-2">{{ auditPage + 1 }} / {{ auditTotalPages }}</span>
+              <button @click="fetchAuditLogs(auditPage + 1)" :disabled="auditPage >= auditTotalPages - 1" class="p-2 rounded-lg border border-sky-100 text-slate-500 hover:bg-sky-50 disabled:opacity-30 disabled:cursor-not-allowed transition"><ChevronRight class="w-4 h-4" /></button>
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
@@ -1719,6 +2615,99 @@ function formatDate(dateStr: string) {
           <button @click="confirmReply" :disabled="!replyContent.trim() || isSubmittingReply" class="flex-1 px-4 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full text-sm font-bold transition flex items-center justify-center gap-2">
             <Loader2 v-if="isSubmittingReply" class="w-4 h-4 animate-spin" />
             {{ isSubmittingReply ? '저장 중...' : '답변 저장' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Order Status Modal -->
+  <Transition name="fade">
+    <div v-if="showOrderStatusModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="font-black text-slate-900 text-center text-lg mb-4">주문 상태 변경</h2>
+        <div class="text-sm text-slate-500 text-center mb-4">주문 #{{ selectedOrder?.orderId }}</div>
+        <select v-model="newOrderStatus"
+          class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white mb-5">
+          <option v-for="(label, key) in ORDER_STATUS_LABELS" :key="key" :value="key">{{ label }}</option>
+        </select>
+        <div class="flex gap-3">
+          <button @click="showOrderStatusModal = false" :disabled="isUpdatingOrderStatus" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
+          <button @click="confirmOrderStatusUpdate" :disabled="isUpdatingOrderStatus" class="flex-1 px-4 py-2.5 bg-sky-500 hover:bg-sky-600 text-white rounded-full text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2">
+            <Loader2 v-if="isUpdatingOrderStatus" class="w-4 h-4 animate-spin" />
+            {{ isUpdatingOrderStatus ? '처리 중...' : '변경하기' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Cancel Payment Modal -->
+  <Transition name="fade">
+    <div v-if="showCancelPaymentModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
+        <XCircle class="w-12 h-12 text-red-500 mx-auto mb-4" />
+        <h2 class="font-black text-slate-900 text-center text-lg">환불 처리</h2>
+        <p class="text-sm text-slate-500 text-center mt-1 mb-4">{{ formatCurrency(paymentToCancel?.amount ?? 0) }}을 환불하시겠습니까?</p>
+        <input v-model="cancelReason" type="text" placeholder="환불 사유 (선택)"
+          class="w-full border border-sky-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 mb-4" />
+        <div class="flex gap-3">
+          <button @click="showCancelPaymentModal = false" :disabled="isCancellingPayment" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
+          <button @click="confirmCancelPayment" :disabled="isCancellingPayment" class="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-full text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2">
+            <Loader2 v-if="isCancellingPayment" class="w-4 h-4 animate-spin" />
+            {{ isCancellingPayment ? '처리 중...' : '환불하기' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Process Report Modal -->
+  <Transition name="fade">
+    <div v-if="showProcessReportModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
+        <Flag class="w-12 h-12 text-sky-500 mx-auto mb-4" />
+        <h2 class="font-black text-slate-900 text-center text-lg mb-2">신고 처리</h2>
+        <div v-if="selectedReport" class="bg-slate-50 rounded-xl px-4 py-3 text-sm text-slate-600 mb-4">
+          <div class="text-xs text-slate-400 mb-1">신고 사유</div>
+          <div>{{ selectedReport.reason }}</div>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button @click="reportProcessAction = 'PROCESSED'"
+            :class="reportProcessAction === 'PROCESSED' ? 'bg-sky-500 text-white' : 'bg-sky-50 text-sky-600'"
+            class="flex-1 py-2 rounded-xl text-sm font-semibold transition">처리 완료</button>
+          <button @click="reportProcessAction = 'DISMISSED'"
+            :class="reportProcessAction === 'DISMISSED' ? 'bg-slate-500 text-white' : 'bg-slate-100 text-slate-600'"
+            class="flex-1 py-2 rounded-xl text-sm font-semibold transition">기각</button>
+        </div>
+        <textarea v-model="reportProcessNote" rows="3" placeholder="처리 메모 (선택)"
+          class="w-full border border-sky-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 resize-none mb-4" />
+        <div class="flex gap-3">
+          <button @click="showProcessReportModal = false" :disabled="isProcessingReport" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
+          <button @click="confirmProcessReport" :disabled="isProcessingReport" class="flex-1 px-4 py-2.5 bg-sky-500 hover:bg-sky-600 text-white rounded-full text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2">
+            <Loader2 v-if="isProcessingReport" class="w-4 h-4 animate-spin" />
+            {{ isProcessingReport ? '처리 중...' : '처리하기' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Suspend Member Modal -->
+  <Transition name="fade">
+    <div v-if="showSuspendModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
+        <AlertTriangle class="w-12 h-12 text-amber-500 mx-auto mb-4" />
+        <h2 class="font-black text-slate-900 text-center text-lg mb-1">이용 정지</h2>
+        <p class="text-sm text-slate-500 text-center mb-4">{{ memberToSanction?.nickName }} 님의 계정을 정지합니다.</p>
+        <label class="block text-xs text-slate-500 mb-1">정지 종료 일시</label>
+        <input v-model="suspendUntil" type="datetime-local"
+          class="w-full border border-sky-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 mb-5" />
+        <div class="flex gap-3">
+          <button @click="showSuspendModal = false" :disabled="isSuspending" class="flex-1 px-4 py-2.5 border border-sky-100 text-slate-600 hover:bg-sky-50 rounded-full text-sm font-semibold transition disabled:opacity-50">취소</button>
+          <button @click="confirmSuspend" :disabled="!suspendUntil || isSuspending" class="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white rounded-full text-sm font-bold transition flex items-center justify-center gap-2">
+            <Loader2 v-if="isSuspending" class="w-4 h-4 animate-spin" />
+            {{ isSuspending ? '처리 중...' : '정지하기' }}
           </button>
         </div>
       </div>
